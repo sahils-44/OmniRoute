@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { MapViewer } from '../common/MapViewer';
 import {
@@ -16,13 +17,60 @@ import {
   Compass,
   AlertCircle,
   Eye,
+  Settings,
+  ShieldCheck,
+  UserCheck,
+  Ban,
+  Clock,
+  Server,
+  Lock,
 } from 'lucide-react';
 
-export const AdminDashboard: React.FC = () => {
-  const { businesses, orders, drivers, deliveryBatches, viewInvoice } = useApp();
+interface AdminDashboardProps {
+  initialTab?: 'radar' | 'orders' | 'merchants' | 'couriers' | 'users' | 'settings';
+}
 
-  const [activeTab, setActiveTab] = useState<'radar' | 'orders' | 'merchants' | 'couriers' | 'finance'>('radar');
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'radar' }) => {
+  const {
+    businesses,
+    orders,
+    drivers,
+    deliveryBatches,
+    viewInvoice,
+    allUsers,
+    allRegisteredUsers,
+    updateUserStatus,
+    fetchRegisteredUsers,
+  } = useApp();
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [activeTab, setActiveTab] = useState<'radar' | 'orders' | 'merchants' | 'couriers' | 'users' | 'settings'>(initialTab);
   const [orderSearch, setOrderSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
+
+  // Fetch registered users on mount
+  useEffect(() => {
+    fetchRegisteredUsers();
+  }, [fetchRegisteredUsers]);
+
+  // Sync activeTab with URL sub-route
+  useEffect(() => {
+    if (location.pathname.includes('/admin/users')) {
+      setActiveTab('users');
+    } else if (location.pathname.includes('/admin/hotels') || location.pathname.includes('/admin/vendors')) {
+      setActiveTab('merchants');
+    } else if (location.pathname.includes('/admin/delivery-partners')) {
+      setActiveTab('couriers');
+    } else if (location.pathname.includes('/admin/orders')) {
+      setActiveTab('orders');
+    } else if (location.pathname.includes('/admin/settings')) {
+      setActiveTab('settings');
+    } else if (location.pathname.includes('/admin/dashboard') || location.pathname.includes('/admin/analytics')) {
+      setActiveTab('radar');
+    }
+  }, [location.pathname]);
 
   // Platform Telemetry Aggregates
   const totalGmv = orders.reduce((sum, o) => sum + o.total, 0);
@@ -153,9 +201,12 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex items-center space-x-2 border-b border-white/10 pb-3 overflow-x-auto">
+      <div className="flex items-center space-x-2 border-b border-white/10 pb-3 overflow-x-auto no-scrollbar">
         <button
-          onClick={() => setActiveTab('radar')}
+          onClick={() => {
+            setActiveTab('radar');
+            navigate('/admin/dashboard');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'radar'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
@@ -167,7 +218,25 @@ export const AdminDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('orders')}
+          onClick={() => {
+            setActiveTab('users');
+            navigate('/admin/users');
+          }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
+            activeTab === 'users'
+              ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
+              : 'text-slate-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>User Approvals & RBAC ({allRegisteredUsers.length || allUsers.length})</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('orders');
+            navigate('/admin/orders');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'orders'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
@@ -175,11 +244,14 @@ export const AdminDashboard: React.FC = () => {
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
-          <span>Platform Orders Master ({orders.length})</span>
+          <span>Platform Orders ({orders.length})</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('merchants')}
+          onClick={() => {
+            setActiveTab('merchants');
+            navigate('/admin/hotels');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'merchants'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
@@ -187,11 +259,14 @@ export const AdminDashboard: React.FC = () => {
           }`}
         >
           <Building2 className="w-3.5 h-3.5" />
-          <span>Merchants & Vendors ({businesses.length})</span>
+          <span>Hotels & Vendors ({businesses.length})</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('couriers')}
+          onClick={() => {
+            setActiveTab('couriers');
+            navigate('/admin/delivery-partners');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'couriers'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
@@ -200,6 +275,21 @@ export const AdminDashboard: React.FC = () => {
         >
           <Bike className="w-3.5 h-3.5" />
           <span>Couriers & Fleet ({drivers.length})</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('settings');
+            navigate('/admin/settings');
+          }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
+            activeTab === 'settings'
+              ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
+              : 'text-slate-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <Settings className="w-3.5 h-3.5" />
+          <span>Security & Config</span>
         </button>
       </div>
 
@@ -221,6 +311,142 @@ export const AdminDashboard: React.FC = () => {
             markers={radarMarkers}
             height="580px"
           />
+        </div>
+      )}
+
+      {/* TAB: USER APPROVALS & RBAC MANAGEMENT */}
+      {activeTab === 'users' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                <Users className="w-4 h-4 text-gold-400" />
+                <span>User Accounts & RBAC Verification</span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Manage partner registrations, approve pending merchant accounts, and enforce role permissions.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="text"
+                placeholder="Search users by name, email, or role..."
+                value={userSearch}
+                onChange={e => setUserSearch(e.target.value)}
+                className="px-3 py-1.5 rounded-xl bg-charcoal-900 border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-gold-500/50 w-64"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {(() => {
+              // Merge all users
+              const userMap = new Map();
+              allUsers.forEach(u => userMap.set(u.id, { ...u, status: u.status || 'active' }));
+              allRegisteredUsers.forEach(u => {
+                const uid = u.id || u.uid;
+                userMap.set(uid, {
+                  id: uid,
+                  name: u.name,
+                  email: u.email,
+                  role: u.role,
+                  phone: u.phone || '+91 98201 12345',
+                  avatar: u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+                  status: u.status || 'active',
+                });
+              });
+
+              const list = Array.from(userMap.values()).filter(u => {
+                const term = userSearch.toLowerCase();
+                return (
+                  u.name.toLowerCase().includes(term) ||
+                  u.email.toLowerCase().includes(term) ||
+                  u.role.toLowerCase().includes(term)
+                );
+              });
+
+              return list.map(u => {
+                const isPending = u.status === 'pending';
+                const isSuspended = u.status === 'suspended';
+
+                return (
+                  <div
+                    key={u.id}
+                    className="p-4 rounded-2xl glass-card border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  >
+                    <div className="flex items-center space-x-3.5">
+                      <img
+                        src={u.avatar}
+                        alt={u.name}
+                        className="w-11 h-11 rounded-xl object-cover border border-white/10"
+                      />
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h4 className="font-bold text-sm text-white">{u.name}</h4>
+                          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md bg-charcoal-900 border border-white/10 text-slate-300">
+                            {u.role.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 font-mono mt-0.5">
+                          {u.email} • {u.phone}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-3 self-end sm:self-center">
+                      {/* Status Badge */}
+                      <span
+                        className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full flex items-center space-x-1 ${
+                          isPending
+                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                            : isSuspended
+                            ? 'bg-red-500/15 text-red-300 border border-red-500/30'
+                            : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                        }`}
+                      >
+                        {isPending && <Clock className="w-3 h-3 animate-pulse" />}
+                        {isSuspended && <Ban className="w-3 h-3" />}
+                        {!isPending && !isSuspended && <CheckCircle2 className="w-3 h-3" />}
+                        <span>{u.status?.toUpperCase()}</span>
+                      </span>
+
+                      {/* Action Buttons */}
+                      {isPending && (
+                        <button
+                          onClick={() => updateUserStatus(u.id, 'active')}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all shadow-sm flex items-center space-x-1"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Approve</span>
+                        </button>
+                      )}
+
+                      {!isPending && !isSuspended && u.role !== 'admin' && (
+                        <button
+                          onClick={() => updateUserStatus(u.id, 'suspended')}
+                          className="px-3 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/30 text-xs font-semibold transition-all flex items-center space-x-1"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          <span>Suspend</span>
+                        </button>
+                      )}
+
+                      {isSuspended && (
+                        <button
+                          onClick={() => updateUserStatus(u.id, 'active')}
+                          className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition-all flex items-center space-x-1"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Reactivate</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
         </div>
       )}
 
@@ -311,7 +537,7 @@ export const AdminDashboard: React.FC = () => {
                 className="w-14 h-14 rounded-2xl object-cover border border-white/10 flex-shrink-0"
               />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center justify-between">
                   <h4 className="font-bold text-sm text-white truncate">{b.name}</h4>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-gold-500/20 text-gold-300">
                     {b.type.toUpperCase()}
@@ -368,6 +594,70 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* TAB 5: PLATFORM SETTINGS & SECURITY */}
+      {activeTab === 'settings' && (
+        <div className="space-y-6">
+          <div className="glass-card rounded-3xl p-6 border border-white/10 space-y-6">
+            <div className="flex items-center justify-between pb-4 border-b border-white/10">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-gold-500/20 border border-gold-500/30 flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5 text-gold-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Platform Security & Backend Integrations</h3>
+                  <p className="text-xs text-slate-400">Enterprise Cloud Infrastructure Status</p>
+                </div>
+              </div>
+
+              <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                PRODUCTION HARDENED
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-2xl bg-charcoal-900 border border-white/10 space-y-2">
+                <div className="flex items-center space-x-2 text-slate-300 font-bold text-xs">
+                  <Server className="w-4 h-4 text-cyan-400" />
+                  <span>Firebase Project ID</span>
+                </div>
+                <p className="font-mono text-sm text-white">omniroute-cep</p>
+                <p className="text-[10px] text-emerald-400">● Auth & Firestore Online</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-charcoal-900 border border-white/10 space-y-2">
+                <div className="flex items-center space-x-2 text-slate-300 font-bold text-xs">
+                  <Compass className="w-4 h-4 text-electric-orange" />
+                  <span>MapTiler Dataviz Dark</span>
+                </div>
+                <p className="font-mono text-sm text-white">HnFKjuxLz2I1IfboVn4P</p>
+                <p className="text-[10px] text-emerald-400">● Live 512px Vector Tiles</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-charcoal-900 border border-white/10 space-y-2">
+                <div className="flex items-center space-x-2 text-slate-300 font-bold text-xs">
+                  <Lock className="w-4 h-4 text-gold-400" />
+                  <span>Firestore Security Rules</span>
+                </div>
+                <p className="font-mono text-sm text-white">rules_version = '2'</p>
+                <p className="text-[10px] text-emerald-400">● Zero Self-Escalation RBAC</p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-charcoal-900 border border-white/10 space-y-3">
+              <h4 className="font-bold text-xs text-white uppercase tracking-wider font-mono">
+                Security Enforcements Active
+              </h4>
+              <ul className="text-xs text-slate-300 space-y-1.5 list-disc pl-5">
+                <li><strong className="text-white">Strict RBAC:</strong> Customer, Hotel Owner, Vendor, Courier Partner, and Administrator dashboards are isolated with React Router guards and Firestore Rules.</li>
+                <li><strong className="text-white">Public Admin Prohibition:</strong> Administrators can never be created through public self-registration.</li>
+                <li><strong className="text-white">Pending Verification:</strong> Merchant and courier partner accounts require administrative approval before operational dispatch.</li>
+                <li><strong className="text-white">OTP Delivery Verification:</strong> 4-digit confirmation PIN is required to complete deliveries.</li>
+              </ul>
+            </div>
+          </div>
         </div>
       )}
     </div>

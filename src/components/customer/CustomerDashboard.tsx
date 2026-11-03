@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Business, BusinessType } from '../../types';
 import { ThreeHeroScene } from '../common/ThreeHeroScene';
@@ -19,17 +20,41 @@ import {
   Utensils,
   Store,
   Layers,
+  User as UserIcon,
+  MapPin,
+  Phone,
+  Mail,
+  ShieldCheck,
 } from 'lucide-react';
 
-export const CustomerDashboard: React.FC = () => {
-  const { businesses, orders, currentUser } = useApp();
+interface CustomerDashboardProps {
+  initialTab?: 'browse' | 'track' | 'history' | 'profile';
+}
 
-  const [activeTab, setActiveTab] = useState<'browse' | 'track' | 'history'>('browse');
+export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ initialTab = 'browse' }) => {
+  const { businesses, orders, currentUser } = useApp();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [activeTab, setActiveTab] = useState<'browse' | 'track' | 'history' | 'profile'>(initialTab);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [trackedOrderId, setTrackedOrderId] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
+
+  // Sync activeTab with URL sub-route
+  useEffect(() => {
+    if (location.pathname.includes('/customer/orders')) {
+      setActiveTab('history');
+    } else if (location.pathname.includes('/customer/tracking')) {
+      setActiveTab('track');
+    } else if (location.pathname.includes('/customer/profile')) {
+      setActiveTab('profile');
+    } else if (location.pathname.includes('/customer/dashboard')) {
+      setActiveTab('browse');
+    }
+  }, [location.pathname]);
 
   // Check for active orders for this customer
   const activeOrders = orders.filter(
@@ -52,16 +77,20 @@ export const CustomerDashboard: React.FC = () => {
   const handleOrderSuccess = (newOrderId: string) => {
     setTrackedOrderId(newOrderId);
     setActiveTab('track');
+    navigate('/customer/tracking');
   };
 
   return (
     <div className="space-y-8 pb-16">
       {/* View Switcher Tabs & Active Order Notification */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar pb-1">
           <button
-            onClick={() => setActiveTab('browse')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+            onClick={() => {
+              setActiveTab('browse');
+              navigate('/customer/dashboard');
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 flex-shrink-0 ${
               activeTab === 'browse'
                 ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -75,8 +104,9 @@ export const CustomerDashboard: React.FC = () => {
             onClick={() => {
               setActiveTab('track');
               setTrackedOrderId(undefined);
+              navigate('/customer/tracking');
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 relative ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 relative flex-shrink-0 ${
               activeTab === 'track'
                 ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -90,8 +120,11 @@ export const CustomerDashboard: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setActiveTab('history')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+            onClick={() => {
+              setActiveTab('history');
+              navigate('/customer/orders');
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 flex-shrink-0 ${
               activeTab === 'history'
                 ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -99,6 +132,21 @@ export const CustomerDashboard: React.FC = () => {
           >
             <Layers className="w-3.5 h-3.5" />
             <span>Order History</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('profile');
+              navigate('/customer/profile');
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 flex-shrink-0 ${
+              activeTab === 'profile'
+                ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <UserIcon className="w-3.5 h-3.5" />
+            <span>Profile & Addresses</span>
           </button>
         </div>
 
@@ -349,6 +397,81 @@ export const CustomerDashboard: React.FC = () => {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW: CUSTOMER PROFILE & ADDRESSES */}
+      {activeTab === 'profile' && (
+        <div className="space-y-6">
+          <div className="glass-panel-gold rounded-3xl p-6 sm:p-8 border border-gold-500/30 shadow-2xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-white/10">
+              <div className="flex items-center space-x-4">
+                <img
+                  src={currentUser.avatar}
+                  alt={currentUser.name}
+                  className="w-16 h-16 rounded-2xl object-cover border-2 border-gold-500/40 shadow-gold-glow"
+                />
+                <div>
+                  <h2 className="text-xl font-bold text-white">{currentUser.name}</h2>
+                  <p className="text-xs text-gold-400 capitalize">{currentUser.role} Account</p>
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">{currentUser.email}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center space-x-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>VERIFIED CUSTOMER</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+              <div className="p-4 rounded-2xl bg-charcoal-900 border border-white/10 space-y-2">
+                <div className="flex items-center space-x-2 text-slate-300 font-bold text-xs">
+                  <Phone className="w-4 h-4 text-gold-400" />
+                  <span>Registered Mobile</span>
+                </div>
+                <p className="text-sm font-mono text-white">{currentUser.phone || '+91 98201 12345'}</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-charcoal-900 border border-white/10 space-y-2">
+                <div className="flex items-center space-x-2 text-slate-300 font-bold text-xs">
+                  <Mail className="w-4 h-4 text-cyan-400" />
+                  <span>Account Email</span>
+                </div>
+                <p className="text-sm font-mono text-white">{currentUser.email}</p>
+              </div>
+            </div>
+
+            {/* Saved Addresses */}
+            <div className="mt-6 pt-6 border-t border-white/10 space-y-3">
+              <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                <MapPin className="w-4 h-4 text-electric-orange" />
+                <span>Saved Delivery Addresses</span>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-xl bg-charcoal-900/80 border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-gold-300">Home Address</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gold-500/15 text-gold-400">Default</span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-snug">
+                    Tower 4, Flat 1202, Regency Park Heights, Bandra West, Mumbai 400050
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-charcoal-900/80 border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-white">Workplace / Office</span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-snug">
+                    7th Floor, Cyber One Tower, Bandra Kurla Complex (BKC), Mumbai 400051
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>

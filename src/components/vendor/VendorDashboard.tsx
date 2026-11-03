@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Order, DeliveryBatch, RouteStop } from '../../types';
 import { MapViewer } from '../common/MapViewer';
 import { optimizeMultiOrderRoute } from '../../services/routingEngine';
+import { PendingNoticeBanner } from '../../routes/guards/PendingNoticeBanner';
 import {
   Store,
   Coffee,
@@ -23,7 +25,11 @@ import {
   Plus,
 } from 'lucide-react';
 
-export const VendorDashboard: React.FC = () => {
+interface VendorDashboardProps {
+  initialTab?: 'batching' | 'orders' | 'menu' | 'sales' | 'inventory';
+}
+
+export const VendorDashboard: React.FC<VendorDashboardProps> = ({ initialTab = 'batching' }) => {
   const {
     businesses,
     orders,
@@ -39,13 +45,31 @@ export const VendorDashboard: React.FC = () => {
     viewInvoice,
   } = useApp();
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
   // Current vendor is Sharma Ji Ki Masala Chai & Breakfast Stall
   const currentVendor =
     businesses.find(b => b.id === currentUser.businessId) ||
     businesses.find(b => b.id === 'biz-vendor-1') ||
     businesses[0];
 
-  const [activeTab, setActiveTab] = useState<'batching' | 'orders' | 'menu' | 'sales'>('batching');
+  const [activeTab, setActiveTab] = useState<'batching' | 'orders' | 'menu' | 'sales'>(
+    initialTab === 'inventory' ? 'menu' : initialTab
+  );
+
+  // Sync activeTab with URL sub-route
+  useEffect(() => {
+    if (location.pathname.includes('/vendor/orders')) {
+      setActiveTab('orders');
+    } else if (location.pathname.includes('/vendor/products') || location.pathname.includes('/vendor/inventory')) {
+      setActiveTab('menu');
+    } else if (location.pathname.includes('/vendor/analytics')) {
+      setActiveTab('sales');
+    } else if (location.pathname.includes('/vendor/dashboard')) {
+      setActiveTab('batching');
+    }
+  }, [location.pathname]);
   const [selectedBatchDriver, setSelectedBatchDriver] = useState<string>(drivers[0].id);
   const [otpInput, setOtpInput] = useState<{ [stopIdx: number]: string }>({});
 
@@ -127,6 +151,9 @@ export const VendorDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-16">
+      {/* Pending Account Review Banner */}
+      <PendingNoticeBanner />
+
       {/* Vendor Profile Header */}
       <div className="relative rounded-3xl overflow-hidden glass-panel-gold border border-gold-500/30 p-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -167,9 +194,12 @@ export const VendorDashboard: React.FC = () => {
       </div>
 
       {/* Sub Tabs */}
-      <div className="flex items-center space-x-2 border-b border-white/10 pb-3 overflow-x-auto">
+      <div className="flex items-center space-x-2 border-b border-white/10 pb-3 overflow-x-auto no-scrollbar">
         <button
-          onClick={() => setActiveTab('batching')}
+          onClick={() => {
+            setActiveTab('batching');
+            navigate('/vendor/dashboard');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'batching'
               ? 'bg-electric-orange text-white shadow-orange-glow'
@@ -182,7 +212,10 @@ export const VendorDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('orders')}
+          onClick={() => {
+            setActiveTab('orders');
+            navigate('/vendor/orders');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'orders'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
@@ -194,7 +227,10 @@ export const VendorDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('menu')}
+          onClick={() => {
+            setActiveTab('menu');
+            navigate('/vendor/products');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'menu'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
@@ -206,7 +242,10 @@ export const VendorDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('sales')}
+          onClick={() => {
+            setActiveTab('sales');
+            navigate('/vendor/analytics');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'sales'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'

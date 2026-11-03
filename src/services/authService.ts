@@ -3,21 +3,36 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   updateProfile,
+  sendPasswordResetEmail,
+  GoogleAuthProvider,
+  signInWithPopup,
   User as FirebaseUser,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  getDocs,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
-import { UserRole } from "../types";
+import { UserRole, UserStatus, ActivityLog } from "../types";
 
 export interface UserProfileData {
-  uid: string;
+  id: string;
+  uid?: string;
   email: string;
   name: string;
   role: UserRole;
   phone?: string;
   avatar?: string;
+  status?: UserStatus;
   businessId?: string;
   createdAt?: unknown;
+  updatedAt?: unknown;
 }
 
 /**
@@ -36,14 +51,95 @@ export const loginUser = async (email: string, password: string): Promise<Fireba
 };
 
 /**
+ * Google Authentication Login / Registration
+ */
+export const loginWithGoogle = async (defaultRole: UserRole = 'customer'): Promise<{ user: FirebaseUser; role: UserRole; isNew: boolean }> => {
+  try {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+
+    // Check if user profile already exists in Firestore
+    const existingProfile = await getUserProfile(user.uid);
+    let assignedRole: UserRole = defaultRole;
+    let isNew = false;
+
+    if (existingProfile && existingProfile.role) {
+      assignedRole = existingProfile.role;
+    } else {
+      isNew = true;
+      // Prohibit admin self-registration
+      if (assignedRole === 'admin') assignedRole = 'customer';
+
+      const businessId =
+        assignedRole === 'restaurant_owner' || assignedRole === 'hotel_owner'
+          ? 'biz-restaurant-1'
+          : assignedRole === 'vendor'
+          ? 'biz-vendor-1'
+          : undefined;
+
+      const userDocRef = doc(db, "users", user.uid);
+      const profilePayload: Record<string, unknown> = {
+        id: user.uid,
+        email: user.email || '',
+        name: user.displayName || 'Google User',
+        role: assignedRole,
+        phone: user.phoneNumber || '+91 98201 12345',
+        status: assignedRole === 'customer' ? 'active' : 'pending',
+        avatar: user.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      if (businessId) {
+        profilePayload.businessId = businessId;
+      }
+
+      try {
+        await setDoc(userDocRef, profilePayload);
+      } catch (err) {
+        console.warn("[Firebase] Could not write Google user profile to Firestore:", err);
+      }
+    }
+
+    return { user, role: assignedRole, isNew };
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("Google Auth error:", err.message);
+    throw error;
+  }
+};
+
+/**
+ * Password Reset Function
+ */
+export const resetPassword = async (email: string): Promise<void> => {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    console.log(`[Firebase] Password reset email sent to ${email}`);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("Password reset error:", err.message);
+    throw error;
+  }
+};
+
+/**
  * Standard Firebase Registration Function
  */
 export const registerUser = async (
   email: string,
   password: string,
   displayName?: string,
-  role: UserRole = 'customer'
+  role: UserRole = 'customer',
+  phone?: string
 ): Promise<FirebaseUser> => {
+  // CRITICAL SECURITY GUARD: Prohibit public administration account creation
+  if (role === 'admin') {
+    throw new Error('Administration accounts cannot be registered publicly. Please contact platform operations.');
+  }
+
   try {
     const result = await createUserWithEmailAndPassword(auth, email, password);
     const user = result.user;
@@ -52,21 +148,26 @@ export const registerUser = async (
       await updateProfile(user, { displayName });
     }
 
-    // Persist user role profile in Firestore `users/{uid}` matching `isValidUser` schema
+    // Persist user role profile in Firestore `users/{uid}`
     try {
       const userDocRef = doc(db, "users", user.uid);
       const businessId =
-        role === 'restaurant_owner'
+        role === 'restaurant_owner' || role === 'hotel_owner'
           ? 'biz-restaurant-1'
           : role === 'vendor'
           ? 'biz-vendor-1'
           : undefined;
+
+      // Merchant/courier accounts start in 'pending' status until verified by administration
+      const initialStatus: UserStatus = role === 'customer' ? 'active' : 'pending';
 
       const profilePayload: Record<string, unknown> = {
         id: user.uid,
         email: user.email || email,
         name: displayName || user.email?.split('@')[0] || 'User',
         role,
+        phone: phone || '+91 98201 12345',
+        status: initialStatus,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -76,7 +177,7 @@ export const registerUser = async (
       }
 
       await setDoc(userDocRef, profilePayload);
-      console.log(`[Firebase] User profile created in Firestore for ${user.uid} with role ${role}`);
+      console.log(`[Firebase] User profile created in Firestore for ${user.uid} with role ${role} (status: ${initialStatus})`);
     } catch (firestoreErr) {
       console.warn("[Firebase] Could not write user profile to Firestore (check rules/network):", firestoreErr);
     }
@@ -117,5 +218,65 @@ export const getUserProfile = async (uid: string): Promise<UserProfileData | nul
   } catch (err) {
     console.warn("Failed to fetch user profile from Firestore:", err);
     return null;
+  }
+};
+
+/**
+ * Update User Status (Admin Feature: Approve, Suspend, Reactivate)
+ */
+export const updateUserStatus = async (uid: string, status: UserStatus): Promise<void> => {
+  try {
+    const userDocRef = doc(db, "users", uid);
+    await updateDoc(userDocRef, {
+      status,
+      updatedAt: serverTimestamp(),
+    });
+    console.log(`[Firebase] User ${uid} status updated to ${status}`);
+  } catch (err) {
+    console.warn(`[Firebase] Could not update user ${uid} status:`, err);
+    throw err;
+  }
+};
+
+/**
+ * Fetch All Users for Admin User Management
+ */
+export const getAllUsers = async (): Promise<UserProfileData[]> => {
+  try {
+    const usersCol = collection(db, "users");
+    const snapshot = await getDocs(usersCol);
+    const list: UserProfileData[] = [];
+    snapshot.forEach(docSnap => {
+      list.push(docSnap.data() as UserProfileData);
+    });
+    return list;
+  } catch (err) {
+    console.warn("[Firebase] Failed to fetch all users:", err);
+    return [];
+  }
+};
+
+/**
+ * Log System Activity to Firestore activityLogs
+ */
+export const logActivity = async (
+  actorId: string,
+  actorName: string,
+  action: string,
+  targetId?: string,
+  details?: string
+): Promise<void> => {
+  try {
+    const logsCol = collection(db, "activityLogs");
+    await addDoc(logsCol, {
+      actorId,
+      actorName,
+      action,
+      targetId: targetId || null,
+      details: details || null,
+      timestamp: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn("[Firebase] Could not write activity log:", err);
   }
 };

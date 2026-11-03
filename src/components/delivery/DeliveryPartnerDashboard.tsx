@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { MapViewer } from '../common/MapViewer';
 import { calculateHaversineDistanceKm } from '../../services/routingEngine';
+import { PendingNoticeBanner } from '../../routes/guards/PendingNoticeBanner';
 import {
   Bike,
   Navigation,
@@ -17,9 +19,16 @@ import {
   FastForward,
   Award,
   Layers,
+  User as UserIcon,
 } from 'lucide-react';
 
-export const DeliveryPartnerDashboard: React.FC = () => {
+interface DeliveryPartnerDashboardProps {
+  initialTab?: 'deliveries' | 'navigation' | 'earnings' | 'history' | 'profile';
+}
+
+export const DeliveryPartnerDashboard: React.FC<DeliveryPartnerDashboardProps> = ({
+  initialTab = 'deliveries',
+}) => {
   const {
     drivers,
     orders,
@@ -35,13 +44,32 @@ export const DeliveryPartnerDashboard: React.FC = () => {
     setSimulationSpeed,
   } = useApp();
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
   // Active driver is Vikram Rane (driver-1)
   const currentDriver = drivers.find(d => d.id === 'driver-1') || drivers[0];
 
-  const [activeSubTab, setActiveSubTab] = useState<'deliveries' | 'navigation' | 'earnings'>('deliveries');
+  const [activeSubTab, setActiveSubTab] = useState<'deliveries' | 'navigation' | 'earnings'>(
+    initialTab === 'navigation' || initialTab === 'earnings' ? initialTab : 'deliveries'
+  );
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [enteredOtp, setEnteredOtp] = useState('');
   const [otpError, setOtpError] = useState('');
+
+  // Sync activeSubTab with URL sub-route
+  useEffect(() => {
+    if (location.pathname.includes('/delivery/navigation')) {
+      setActiveSubTab('navigation');
+    } else if (location.pathname.includes('/delivery/earnings')) {
+      setActiveSubTab('earnings');
+    } else if (
+      location.pathname.includes('/delivery/assignments') ||
+      location.pathname.includes('/delivery/dashboard')
+    ) {
+      setActiveSubTab('deliveries');
+    }
+  }, [location.pathname]);
 
   // Find active single order or active multi-stop batch for this driver
   const assignedSingleOrders = orders.filter(
@@ -133,6 +161,9 @@ export const DeliveryPartnerDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-16 max-w-4xl mx-auto">
+      {/* Pending Account Review Banner */}
+      <PendingNoticeBanner />
+
       {/* Mobile-First Courier Status Card */}
       <div className="p-5 rounded-3xl glass-panel-gold border border-gold-500/30 space-y-4">
         <div className="flex items-center justify-between">
@@ -250,10 +281,13 @@ export const DeliveryPartnerDashboard: React.FC = () => {
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex items-center space-x-2 border-b border-white/10 pb-3">
+      <div className="flex items-center space-x-2 border-b border-white/10 pb-3 overflow-x-auto no-scrollbar">
         <button
-          onClick={() => setActiveSubTab('deliveries')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+          onClick={() => {
+            setActiveSubTab('deliveries');
+            navigate('/delivery/assignments');
+          }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
             activeSubTab === 'deliveries'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
               : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -263,8 +297,11 @@ export const DeliveryPartnerDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveSubTab('navigation')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+          onClick={() => {
+            setActiveSubTab('navigation');
+            navigate('/delivery/navigation');
+          }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeSubTab === 'navigation'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
               : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -275,8 +312,11 @@ export const DeliveryPartnerDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveSubTab('earnings')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+          onClick={() => {
+            setActiveSubTab('earnings');
+            navigate('/delivery/earnings');
+          }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
             activeSubTab === 'earnings'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
               : 'text-slate-400 hover:text-white hover:bg-white/5'

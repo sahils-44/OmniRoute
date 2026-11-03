@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/common/Navbar';
 import { CustomerDashboard } from './components/customer/CustomerDashboard';
@@ -10,27 +11,32 @@ import { NotificationToast } from './components/common/NotificationToast';
 import { InvoiceModal } from './components/common/InvoiceModal';
 import { CartDrawer } from './components/customer/CartDrawer';
 import { AuthPage } from './components/auth/AuthPage';
-import { LoadingScreen } from './components/auth/LoadingScreen';
-import { Compass, ShieldCheck, Heart, Terminal } from 'lucide-react';
+import { ForgotPasswordPage } from './routes/pages/ForgotPasswordPage';
+import { UnauthorizedPage } from './routes/pages/UnauthorizedPage';
+import { NotFoundPage } from './routes/pages/NotFoundPage';
+import { AuthenticationGuard } from './routes/guards/AuthenticationGuard';
+import { RoleGuard } from './routes/guards/RoleGuard';
+
+const RoleRedirect: React.FC = () => {
+  const { currentUser } = useApp();
+  switch (currentUser.role) {
+    case 'restaurant_owner':
+    case 'hotel_owner':
+      return <Navigate to="/hotel/dashboard" replace />;
+    case 'vendor':
+      return <Navigate to="/vendor/dashboard" replace />;
+    case 'delivery_partner':
+      return <Navigate to="/delivery/dashboard" replace />;
+    case 'admin':
+      return <Navigate to="/admin/dashboard" replace />;
+    case 'customer':
+    default:
+      return <Navigate to="/customer/dashboard" replace />;
+  }
+};
 
 const MainLayout: React.FC = () => {
-  const { currentUser, firebaseUser, authLoading, isGuestDemo, loginDemoRole } = useApp();
   const [isCartOpen, setIsCartOpen] = useState(false);
-
-  // 1. Maintain login session automatically with loading screen
-  if (authLoading) {
-    return <LoadingScreen />;
-  }
-
-  // 2. If user is null and not in demo mode, show AuthPage
-  if (!firebaseUser && !isGuestDemo) {
-    return (
-      <AuthPage
-        onDemoLogin={role => loginDemoRole(role)}
-        onSuccess={() => {}}
-      />
-    );
-  }
 
   return (
     <div className="min-h-screen bg-charcoal-950 text-slate-100 flex flex-col selection:bg-gold-500/30 selection:text-gold-200">
@@ -45,11 +51,7 @@ const MainLayout: React.FC = () => {
 
       {/* Primary Dashboard Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 pt-6">
-        {currentUser.role === 'customer' && <CustomerDashboard />}
-        {currentUser.role === 'restaurant_owner' && <RestaurantDashboard />}
-        {currentUser.role === 'vendor' && <VendorDashboard />}
-        {currentUser.role === 'delivery_partner' && <DeliveryPartnerDashboard />}
-        {currentUser.role === 'admin' && <AdminDashboard />}
+        <Outlet />
       </main>
 
       {/* Standalone Cart Drawer for Global Access */}
@@ -91,7 +93,59 @@ const MainLayout: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <MainLayout />
+      <BrowserRouter>
+        <Routes>
+          {/* Public Authentication & Error Routes */}
+          <Route path="/login" element={<AuthPage defaultMode="login" />} />
+          <Route path="/register" element={<AuthPage defaultMode="signup" />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/unauthorized" element={<UnauthorizedPage />} />
+
+          {/* Legacy & Shortcut Redirects */}
+          <Route path="/restaurant/*" element={<Navigate to="/hotel/dashboard" replace />} />
+
+          {/* Protected Routes Hierarchy */}
+          <Route element={<AuthenticationGuard />}>
+            <Route element={<MainLayout />}>
+              {/* Intelligent Root Role Dispatcher */}
+              <Route path="/" element={<RoleRedirect />} />
+
+              {/* 1. Customer Routes */}
+              <Route element={<RoleGuard allowedRoles={['customer']} />}>
+                <Route path="/customer" element={<Navigate to="/customer/dashboard" replace />} />
+                <Route path="/customer/*" element={<CustomerDashboard />} />
+              </Route>
+
+              {/* 2. Hotel Owner Routes */}
+              <Route element={<RoleGuard allowedRoles={['restaurant_owner', 'hotel_owner']} />}>
+                <Route path="/hotel" element={<Navigate to="/hotel/dashboard" replace />} />
+                <Route path="/hotel/*" element={<RestaurantDashboard />} />
+              </Route>
+
+              {/* 3. Local Street Vendor Routes */}
+              <Route element={<RoleGuard allowedRoles={['vendor']} />}>
+                <Route path="/vendor" element={<Navigate to="/vendor/dashboard" replace />} />
+                <Route path="/vendor/*" element={<VendorDashboard />} />
+              </Route>
+
+              {/* 4. Delivery Partner Routes */}
+              <Route element={<RoleGuard allowedRoles={['delivery_partner']} />}>
+                <Route path="/delivery" element={<Navigate to="/delivery/dashboard" replace />} />
+                <Route path="/delivery/*" element={<DeliveryPartnerDashboard />} />
+              </Route>
+
+              {/* 5. Administration Routes */}
+              <Route element={<RoleGuard allowedRoles={['admin']} />}>
+                <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+                <Route path="/admin/*" element={<AdminDashboard />} />
+              </Route>
+            </Route>
+          </Route>
+
+          {/* 404 Route Not Found */}
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </BrowserRouter>
     </AppProvider>
   );
 }

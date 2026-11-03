@@ -34,7 +34,13 @@ import {
   registerUser as fbRegisterUser,
   logoutUser as fbLogoutUser,
   getUserProfile,
+  loginWithGoogle as fbLoginWithGoogle,
+  resetPassword as fbResetPassword,
+  updateUserStatus as fbUpdateUserStatus,
+  getAllUsers as fbGetAllUsers,
+  UserProfileData,
 } from '../services/authService';
+import { UserStatus } from '../types';
 
 interface AppContextType {
   // Authentication & Role
@@ -47,10 +53,21 @@ interface AppContextType {
   firebaseUser: FirebaseUser | null;
   authLoading: boolean;
   loginUser: (email: string, password: string) => Promise<FirebaseUser>;
-  registerUser: (email: string, password: string, displayName?: string, role?: UserRole) => Promise<FirebaseUser>;
+  registerUser: (
+    email: string,
+    password: string,
+    displayName?: string,
+    role?: UserRole,
+    phone?: string
+  ) => Promise<FirebaseUser>;
+  loginWithGoogle: (role?: UserRole) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   logoutUser: () => Promise<void>;
   isGuestDemo: boolean;
   loginDemoRole: (role: UserRole) => void;
+  allRegisteredUsers: UserProfileData[];
+  updateUserStatus: (uid: string, status: UserStatus) => Promise<void>;
+  fetchRegisteredUsers: () => Promise<void>;
 
   // Businesses & Menus
   businesses: Business[];
@@ -1026,23 +1043,107 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return user;
   }, []);
 
+  const [allRegisteredUsers, setAllRegisteredUsers] = useState<UserProfileData[]>([]);
+
+  const fetchRegisteredUsers = useCallback(async () => {
+    try {
+      const users = await fbGetAllUsers();
+      if (users && users.length > 0) {
+        setAllRegisteredUsers(users);
+      }
+    } catch (err) {
+      console.warn('Could not fetch registered users:', err);
+    }
+  }, []);
+
+  const updateUserStatus = useCallback(
+    async (uid: string, status: UserStatus) => {
+      await fbUpdateUserStatus(uid, status);
+      setAllRegisteredUsers(prev =>
+        prev.map(u => (u.id === uid || u.uid === uid ? { ...u, status } : u))
+      );
+      if (currentUser.id === uid) {
+        setCurrentUser(prev => ({ ...prev, status }));
+      }
+      soundService.playStatusUpdateSound();
+    },
+    [currentUser.id]
+  );
+
+  const loginWithGoogle = useCallback(async (defaultRole: UserRole = 'customer') => {
+    const { user, role } = await fbLoginWithGoogle(defaultRole);
+    let resolvedStatus: UserStatus = role === 'customer' ? 'active' : 'pending';
+    let resolvedBusinessId: string | undefined = undefined;
+
+    try {
+      const profile = await getUserProfile(user.uid);
+      if (profile) {
+        if (profile.status) resolvedStatus = profile.status;
+        resolvedBusinessId =
+          profile.businessId ||
+          (role === 'restaurant_owner' || role === 'hotel_owner'
+            ? 'biz-restaurant-1'
+            : role === 'vendor'
+            ? 'biz-vendor-1'
+            : undefined);
+      }
+    } catch {
+      // fallback
+    }
+
+    const loggedUser: User = {
+      id: user.uid,
+      name: user.displayName || 'Google User',
+      email: user.email || '',
+      role,
+      phone: user.phoneNumber || '+91 98201 12345',
+      avatar:
+        user.photoURL ||
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+      status: resolvedStatus,
+      businessId: resolvedBusinessId,
+    };
+
+    setCurrentUser(loggedUser);
+    localStorage.setItem('omniroute_user', JSON.stringify(loggedUser));
+    setFirebaseUser(user);
+    setIsGuestDemo(false);
+    localStorage.removeItem('omniroute_is_guest');
+    soundService.playSuccessDeliverySound();
+  }, []);
+
+  const resetPassword = useCallback(async (email: string) => {
+    await fbResetPassword(email);
+    soundService.playStatusUpdateSound();
+  }, []);
+
   const registerUser = useCallback(
-    async (email: string, pass: string, name?: string, role: UserRole = 'customer') => {
-      const user = await fbRegisterUser(email, pass, name, role);
+    async (
+      email: string,
+      pass: string,
+      name?: string,
+      role: UserRole = 'customer',
+      phone?: string
+    ) => {
+      const user = await fbRegisterUser(email, pass, name, role, phone);
       const businessId =
-        role === 'restaurant_owner'
+        role === 'restaurant_owner' || role === 'hotel_owner'
           ? 'biz-restaurant-1'
           : role === 'vendor'
           ? 'biz-vendor-1'
           : undefined;
+
+      const initialStatus: UserStatus = role === 'customer' ? 'active' : 'pending';
 
       const newUser: User = {
         id: user.uid,
         name: name || user.displayName || email.split('@')[0] || 'User',
         email: user.email || email,
         role: role,
-        phone: '+91 98201 12345',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+        phone: phone || '+91 98201 12345',
+        avatar:
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+        status: initialStatus,
         businessId,
       };
 
@@ -1084,9 +1185,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         authLoading,
         loginUser,
         registerUser,
+        loginWithGoogle,
+        resetPassword,
         logoutUser,
         isGuestDemo,
         loginDemoRole,
+        allRegisteredUsers,
+        updateUserStatus,
+        fetchRegisteredUsers,
         businesses,
         menuItems,
         updateBusiness,

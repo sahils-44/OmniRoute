@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Order, MenuItem, OrderStatus } from '../../types';
 import { MapViewer } from '../common/MapViewer';
+import { PendingNoticeBanner } from '../../routes/guards/PendingNoticeBanner';
 import {
   UtensilsCrossed,
   Clock,
@@ -19,9 +21,14 @@ import {
   UserCheck,
   ChefHat,
   Package,
+  Settings,
 } from 'lucide-react';
 
-export const RestaurantDashboard: React.FC = () => {
+interface RestaurantDashboardProps {
+  initialTab?: 'orders' | 'scheduled' | 'menu' | 'fleet' | 'analytics' | 'settings';
+}
+
+export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({ initialTab = 'orders' }) => {
   const {
     businesses,
     orders,
@@ -37,11 +44,29 @@ export const RestaurantDashboard: React.FC = () => {
     viewInvoice,
   } = useApp();
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
   // Find business for this manager (default to The Royal Grand Pavilion)
   const currentBusiness =
     businesses.find(b => b.id === currentUser.businessId) || businesses[0];
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'scheduled' | 'menu' | 'fleet' | 'analytics'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'scheduled' | 'menu' | 'fleet' | 'analytics' | 'settings'>(initialTab);
+
+  // Sync activeTab with URL sub-route
+  useEffect(() => {
+    if (location.pathname.includes('/hotel/menu')) {
+      setActiveTab('menu');
+    } else if (location.pathname.includes('/hotel/delivery')) {
+      setActiveTab('fleet');
+    } else if (location.pathname.includes('/hotel/analytics')) {
+      setActiveTab('analytics');
+    } else if (location.pathname.includes('/hotel/settings')) {
+      setActiveTab('settings');
+    } else if (location.pathname.includes('/hotel/orders') || location.pathname.includes('/hotel/dashboard')) {
+      setActiveTab('orders');
+    }
+  }, [location.pathname]);
   const [selectedDriverForOrder, setSelectedDriverForOrder] = useState<{ [orderId: string]: string }>({});
 
   // Menu Add/Edit State
@@ -112,6 +137,9 @@ export const RestaurantDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-16">
+      {/* Pending Account Review Banner */}
+      <PendingNoticeBanner />
+
       {/* Hotel Banner Profile Summary */}
       <div className="relative rounded-3xl overflow-hidden glass-panel-gold border border-gold-500/30 p-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -154,9 +182,12 @@ export const RestaurantDashboard: React.FC = () => {
       </div>
 
       {/* Sub Navigation Tabs */}
-      <div className="flex items-center space-x-2 border-b border-white/10 pb-3 overflow-x-auto">
+      <div className="flex items-center space-x-2 border-b border-white/10 pb-3 overflow-x-auto no-scrollbar">
         <button
-          onClick={() => setActiveTab('orders')}
+          onClick={() => {
+            setActiveTab('orders');
+            navigate('/hotel/orders');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'orders'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
@@ -168,7 +199,10 @@ export const RestaurantDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('scheduled')}
+          onClick={() => {
+            setActiveTab('scheduled');
+            navigate('/hotel/orders');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'scheduled'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
@@ -180,7 +214,10 @@ export const RestaurantDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('menu')}
+          onClick={() => {
+            setActiveTab('menu');
+            navigate('/hotel/menu');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'menu'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
@@ -192,7 +229,10 @@ export const RestaurantDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('fleet')}
+          onClick={() => {
+            setActiveTab('fleet');
+            navigate('/hotel/delivery');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'fleet'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'
@@ -204,7 +244,10 @@ export const RestaurantDashboard: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('analytics')}
+          onClick={() => {
+            setActiveTab('analytics');
+            navigate('/hotel/analytics');
+          }}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-1.5 ${
             activeTab === 'analytics'
               ? 'bg-gold-500 text-charcoal-950 shadow-gold-glow'

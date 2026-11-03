@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
 import {
@@ -40,11 +41,27 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
     setSimulationSpeed,
   } = useApp();
 
+  const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
 
   const cartTotalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  const rolePaths: Record<string, string> = {
+    customer: '/customer/dashboard',
+    restaurant_owner: '/hotel/dashboard',
+    hotel_owner: '/hotel/dashboard',
+    vendor: '/vendor/dashboard',
+    delivery_partner: '/delivery/dashboard',
+    admin: '/admin/dashboard',
+  };
+
+  const handleRoleSelect = (roleKey: UserRole) => {
+    switchRole(roleKey);
+    const targetPath = rolePaths[roleKey] || '/customer/dashboard';
+    navigate(targetPath);
+  };
 
   const roleLabels: Record<UserRole, { label: string; icon: React.ReactNode; color: string }> = {
     customer: { label: 'Customer', icon: <ShoppingBag className="w-3.5 h-3.5" />, color: 'text-cyan-400 border-cyan-500/40 bg-cyan-500/10' },
@@ -93,7 +110,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
             return (
               <button
                 key={roleKey}
-                onClick={() => switchRole(roleKey)}
+                onClick={() => handleRoleSelect(roleKey)}
                 className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   isActive
                     ? `${role.color} border shadow-sm font-bold`
@@ -250,7 +267,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
                       <button
                         key={roleKey}
                         onClick={() => {
-                          switchRole(roleKey);
+                          handleRoleSelect(roleKey);
                           setShowRoleMenu(false);
                         }}
                         className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${
@@ -274,6 +291,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
                     onClick={async () => {
                       setShowRoleMenu(false);
                       await logoutUser();
+                      navigate('/login');
                     }}
                     className="w-full flex items-center space-x-2 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
                   >
@@ -295,7 +313,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
           return (
             <button
               key={roleKey}
-              onClick={() => switchRole(roleKey)}
+              onClick={() => handleRoleSelect(roleKey)}
               className={`flex-shrink-0 flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
                 isActive
                   ? `${role.color} border shadow-sm font-bold`

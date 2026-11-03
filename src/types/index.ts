@@ -1,4 +1,12 @@
-export type UserRole = 'customer' | 'restaurant_owner' | 'vendor' | 'delivery_partner' | 'admin';
+export type UserRole =
+  | 'customer'
+  | 'restaurant_owner'
+  | 'hotel_owner'
+  | 'vendor'
+  | 'delivery_partner'
+  | 'admin';
+
+export type UserStatus = 'active' | 'pending' | 'suspended';
 
 export type BusinessType = 'restaurant' | 'street_vendor' | 'bakery' | 'chai_stall' | 'grocery';
 
@@ -14,7 +22,10 @@ export interface User {
   role: UserRole;
   phone: string;
   avatar: string;
+  status?: UserStatus;
   businessId?: string; // If restaurant owner or vendor
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Business {
@@ -226,4 +237,37 @@ export interface AddressPreset {
   address: string;
   coordinates: Coordinates;
   isDefault?: boolean;
+}
+
+export interface HotelRecord {
+  id: string;
+  ownerId: string;
+  hotelName: string;
+  address: string;
+  location: Coordinates;
+  status: UserStatus;
+  createdAt?: string;
+  cuisine?: string[];
+  rating?: number;
+}
+
+export interface VendorRecord {
+  id: string;
+  ownerId: string;
+  vendorName: string;
+  address: string;
+  location: Coordinates;
+  status: UserStatus;
+  createdAt?: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  actorId: string;
+  actorName: string;
+  action: string;
+  targetId?: string;
+  targetType?: string;
+  timestamp: string;
+  details?: string;
 }
