@@ -42,6 +42,11 @@ export const loginUser = async (email: string, password: string): Promise<Fireba
   try {
     const result = await signInWithEmailAndPassword(auth, email, password);
     console.log("Logged in:", result.user.uid);
+    const profile = await getUserProfile(result.user.uid);
+    if (profile && profile.status === 'suspended') {
+      await signOut(auth);
+      throw new Error('This account has been suspended by platform administration.');
+    }
     return result.user;
   } catch (error: unknown) {
     const err = error as Error;
@@ -86,7 +91,7 @@ export const loginWithGoogle = async (defaultRole: UserRole = 'customer'): Promi
         name: user.displayName || 'Google User',
         role: assignedRole,
         phone: user.phoneNumber || '+91 98201 12345',
-        status: assignedRole === 'customer' ? 'active' : 'pending',
+        status: 'active',
         avatar: user.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -158,8 +163,8 @@ export const registerUser = async (
           ? 'biz-vendor-1'
           : undefined;
 
-      // Merchant/courier accounts start in 'pending' status until verified by administration
-      const initialStatus: UserStatus = role === 'customer' ? 'active' : 'pending';
+      // All registration roles receive active status immediately (no pending approval required)
+      const initialStatus: UserStatus = 'active';
 
       const profilePayload: Record<string, unknown> = {
         id: user.uid,

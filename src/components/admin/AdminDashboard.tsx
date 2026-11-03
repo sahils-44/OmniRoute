@@ -229,7 +229,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'ra
           }`}
         >
           <Users className="w-3.5 h-3.5" />
-          <span>User Approvals & RBAC ({allRegisteredUsers.length || allUsers.length})</span>
+          <span>User Accounts & RBAC ({allRegisteredUsers.length || allUsers.length})</span>
         </button>
 
         <button
@@ -314,7 +314,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'ra
         </div>
       )}
 
-      {/* TAB: USER APPROVALS & RBAC MANAGEMENT */}
+      {/* TAB: USER ACCOUNTS & RBAC MANAGEMENT */}
       {activeTab === 'users' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -324,7 +324,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'ra
                 <span>User Accounts & RBAC Verification</span>
               </h3>
               <p className="text-xs text-slate-400">
-                Manage partner registrations, approve pending merchant accounts, and enforce role permissions.
+                Manage registered partner & customer accounts, review active roles, and enforce security policies.
               </p>
             </div>
 
@@ -398,31 +398,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'ra
                       {/* Status Badge */}
                       <span
                         className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full flex items-center space-x-1 ${
-                          isPending
-                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                            : isSuspended
+                          isSuspended
                             ? 'bg-red-500/15 text-red-300 border border-red-500/30'
                             : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                         }`}
                       >
-                        {isPending && <Clock className="w-3 h-3 animate-pulse" />}
-                        {isSuspended && <Ban className="w-3 h-3" />}
-                        {!isPending && !isSuspended && <CheckCircle2 className="w-3 h-3" />}
-                        <span>{u.status?.toUpperCase()}</span>
+                        {isSuspended ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+                        <span>{isSuspended ? 'SUSPENDED' : 'ACTIVE'}</span>
                       </span>
 
-                      {/* Action Buttons */}
-                      {isPending && (
-                        <button
-                          onClick={() => updateUserStatus(u.id, 'active')}
-                          className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all shadow-sm flex items-center space-x-1"
-                        >
-                          <UserCheck className="w-3.5 h-3.5" />
-                          <span>Approve</span>
-                        </button>
-                      )}
-
-                      {!isPending && !isSuspended && u.role !== 'admin' && (
+                      {/* Action Buttons: Suspend or Reactivate */}
+                      {!isSuspended && u.role !== 'admin' && (
                         <button
                           onClick={() => updateUserStatus(u.id, 'suspended')}
                           className="px-3 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/30 text-xs font-semibold transition-all flex items-center space-x-1"
@@ -435,7 +421,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'ra
                       {isSuspended && (
                         <button
                           onClick={() => updateUserStatus(u.id, 'active')}
-                          className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition-all flex items-center space-x-1"
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all flex items-center space-x-1"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           <span>Reactivate</span>
@@ -653,7 +639,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'ra
               <ul className="text-xs text-slate-300 space-y-1.5 list-disc pl-5">
                 <li><strong className="text-white">Strict RBAC:</strong> Customer, Hotel Owner, Vendor, Courier Partner, and Administrator dashboards are isolated with React Router guards and Firestore Rules.</li>
                 <li><strong className="text-white">Public Admin Prohibition:</strong> Administrators can never be created through public self-registration.</li>
-                <li><strong className="text-white">Pending Verification:</strong> Merchant and courier partner accounts require administrative approval before operational dispatch.</li>
+                <li><strong className="text-white">Instant Active Status:</strong> All customer, hotel owner, vendor, and courier partner accounts receive active status immediately upon registration.</li>
                 <li><strong className="text-white">OTP Delivery Verification:</strong> 4-digit confirmation PIN is required to complete deliveries.</li>
               </ul>
             </div>

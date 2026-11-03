@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Order, MenuItem, OrderStatus } from '../../types';
 import { MapViewer } from '../common/MapViewer';
-import { PendingNoticeBanner } from '../../routes/guards/PendingNoticeBanner';
+
 import {
   UtensilsCrossed,
   Clock,
@@ -137,9 +137,6 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({ initia
 
   return (
     <div className="space-y-6 pb-16">
-      {/* Pending Account Review Banner */}
-      <PendingNoticeBanner />
-
       {/* Hotel Banner Profile Summary */}
       <div className="relative rounded-3xl overflow-hidden glass-panel-gold border border-gold-500/30 p-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

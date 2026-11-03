@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { Order, DeliveryBatch, RouteStop } from '../../types';
 import { MapViewer } from '../common/MapViewer';
 import { optimizeMultiOrderRoute } from '../../services/routingEngine';
-import { PendingNoticeBanner } from '../../routes/guards/PendingNoticeBanner';
+
 import {
   Store,
   Coffee,
@@ -151,9 +151,6 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({ initialTab = '
 
   return (
     <div className="space-y-6 pb-16">
-      {/* Pending Account Review Banner */}
-      <PendingNoticeBanner />
-
       {/* Vendor Profile Header */}
       <div className="relative rounded-3xl overflow-hidden glass-panel-gold border border-gold-500/30 p-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

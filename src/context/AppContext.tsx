@@ -161,6 +161,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               role: profile.role || 'customer',
               phone: profile.phone || '+91 98201 12345',
               avatar: profile.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+              status: profile.status || 'active',
               businessId: profile.businessId,
             });
           } else {
@@ -169,6 +170,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               id: currentUserState.uid,
               name: currentUserState.displayName || currentUserState.email?.split('@')[0] || prev.name,
               email: currentUserState.email || prev.email,
+              role: 'customer',
+              status: 'active',
             }));
           }
         } catch {
@@ -177,6 +180,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             id: currentUserState.uid,
             name: currentUserState.displayName || currentUserState.email?.split('@')[0] || prev.name,
             email: currentUserState.email || prev.email,
+            role: 'customer',
+            status: 'active',
           }));
         }
       }
@@ -1072,7 +1077,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loginWithGoogle = useCallback(async (defaultRole: UserRole = 'customer') => {
     const { user, role } = await fbLoginWithGoogle(defaultRole);
-    let resolvedStatus: UserStatus = role === 'customer' ? 'active' : 'pending';
+    let resolvedStatus: UserStatus = 'active';
     let resolvedBusinessId: string | undefined = undefined;
 
     try {
@@ -1133,7 +1138,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ? 'biz-vendor-1'
           : undefined;
 
-      const initialStatus: UserStatus = role === 'customer' ? 'active' : 'pending';
+      // All registration roles receive active status immediately (no pending approval required)
+      const initialStatus: UserStatus = 'active';
 
       const newUser: User = {
         id: user.uid,

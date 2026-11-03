@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { MapViewer } from '../common/MapViewer';
 import { calculateHaversineDistanceKm } from '../../services/routingEngine';
-import { PendingNoticeBanner } from '../../routes/guards/PendingNoticeBanner';
+
 import {
   Bike,
   Navigation,
@@ -161,9 +161,6 @@ export const DeliveryPartnerDashboard: React.FC<DeliveryPartnerDashboardProps> =
 
   return (
     <div className="space-y-6 pb-16 max-w-4xl mx-auto">
-      {/* Pending Account Review Banner */}
-      <PendingNoticeBanner />
-
       {/* Mobile-First Courier Status Card */}
       <div className="p-5 rounded-3xl glass-panel-gold border border-gold-500/30 space-y-4">
         <div className="flex items-center justify-between">

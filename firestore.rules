@@ -15,7 +15,8 @@ rules_version = '2';
 //   - id: string (optional, matches UID, max 128 chars)
 //   - name: string (required, 1-100 chars)
 //   - email: string (required, valid email, max 150 chars, immutable)
-//   - role: string (required, ['customer', 'restaurant_owner', 'vendor', 'delivery_partner', 'manager', 'admin'])
+//   - role: string (required, ['customer', 'restaurant_owner', 'hotel_owner', 'vendor', 'delivery_partner', 'manager', 'admin'], immutable by user)
+//   - status: string (optional, ['active', 'pending', 'suspended'], immutable by user, managed by admin)
 //   - phone: string (optional, max 30 chars)
 //   - avatar: string (optional, max 500 chars)
 //   - businessId: string (optional, max 100 chars)
@@ -66,7 +67,7 @@ rules_version = '2';
 //   - createdAt: timestamp or ISO string (optional, immutable)
 //   - updatedAt: timestamp or ISO string (optional)
 //
-// Subcollection: businesses/{businessId}/menuItems (and /menuItems)
+// Subcollection: businesses/{businessId}/menuItems (and top-level /menuItems)
 // Document ID: {itemId}
 // Fields:
 //   - id: string (optional, max 128 chars)
@@ -120,7 +121,7 @@ rules_version = '2';
 //   - preparationDeadline: string or timestamp (optional)
 //   - estimatedDeliveryTime: string or timestamp (optional)
 //   - proximityAlertTriggered: bool (optional)
-//   - deliveryConfirmationCode: string (required, 4-6 digit OTP, immutable by courier)
+//   - deliveryConfirmationCode: string (required, 4-6 digit OTP, strictly immutable)
 //   - createdAt: timestamp or ISO string (optional, immutable)
 //   - updatedAt: timestamp or ISO string (optional)
 //
@@ -133,7 +134,7 @@ rules_version = '2';
 //   - vendorOwnerId: string (optional, max 128 chars)
 //   - vendorName: string (optional, max 150 chars)
 //   - vendorCoords: map {lat, lng} (optional, valid coordinates)
-//   - orderIds: list of strings (required, 1-50 items)
+//   - orderIds: list of strings (required, 1-50 items, immutable by courier)
 //   - deliveryPartnerId: string (optional, max 128 chars)
 //   - deliveryPartnerName: string (optional, max 100 chars)
 //   - status: string (required, ['draft', 'suggested', 'assigned', 'in_progress', 'completed', 'cancelled'])
@@ -170,13 +171,22 @@ rules_version = '2';
 //   - invoiceNumber: string (required, max 50 chars)
 //   - orderId: string (required, max 128 chars)
 //   - orderNumber: string (optional, max 50 chars)
-//   - subtotal: number (required, >= 0)
-//   - cgst: number (required, >= 0)
-//   - sgst: number (required, >= 0)
-//   - deliveryFee: number (required, >= 0)
+//   - customerId: string (optional, max 128 chars)
+//   - vendorId: string (optional, max 128 chars)
+//   - issueDate: string or timestamp (optional)
+//   - customer: map (optional)
+//   - vendor: map (optional)
+//   - items: list (optional, max 50 items)
+//   - subtotal: number (required, >= 0, <= 1000000)
+//   - cgst: number (required, >= 0, <= 1000000)
+//   - sgst: number (required, >= 0, <= 1000000)
+//   - deliveryFee: number (required, >= 0, <= 1000000)
 //   - discount: number (optional, >= 0)
-//   - grandTotal: number (required, >= 0)
+//   - grandTotal: number (required, >= 0, <= 1000000)
+//   - paymentMethod: string (optional, max 50 chars)
 //   - paymentStatus: string (required, ['PAID', 'PENDING', 'paid', 'pending'])
+//   - createdAt: timestamp or ISO string (optional, immutable)
+//   - updatedAt: timestamp or ISO string (optional)
 //
 // Collection: notifications
 // Document ID: {notificationId}
@@ -188,7 +198,21 @@ rules_version = '2';
 //   - title: string (required, 1-150 chars)
 //   - message: string (required, 1-500 chars)
 //   - type: string (required, ['order', 'proximity', 'system', 'assignment', 'batch'])
+//   - timestamp: string or timestamp (optional)
 //   - read: bool (required)
+//   - createdAt: timestamp or ISO string (optional, immutable)
+//
+// Collection: activityLogs
+// Document ID: {logId}
+// Fields:
+//   - id: string (optional, max 128 chars)
+//   - actorId: string (required, max 128 chars)
+//   - actorName: string (required, max 100 chars)
+//   - action: string (required, max 100 chars)
+//   - targetId: string (optional, max 128 chars)
+//   - targetType: string (optional, max 100 chars)
+//   - details: string (optional, max 1000 chars)
+//   - timestamp: timestamp or string (optional)
 //
 // ===============================================================
 
@@ -232,7 +256,7 @@ service cloud.firestore {
 
     // Check if the authenticated user is a Logistics Operations Manager
     // Managers supervise dispatching, vendor catalog sanity, and active order resolution.
-    // Managers CANNOT escalate their own role, appoint administrators, or tamper with system roles.
+    // Managers CANNOT escalate their own role, appoint administrators, or tamper with system roles/statuses.
     function isManager() {
       return isAuthenticated() && (
         isAdmin() ||
@@ -254,6 +278,60 @@ service cloud.firestore {
               ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
               : 'customer'
           );
+    }
+
+    // Check if authenticated user is the respective owner of a business
+    function isBusinessOwner(businessId) {
+      return isAuthenticated() && (
+        businessId == request.auth.uid ||
+        (
+          exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+          get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+        ) ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businessId == businessId
+        )
+      );
+    }
+
+    // Check if authenticated user is the hotel, restaurant, or vendor owner of an order
+    function isOrderBusinessOwner(businessId, businessOwnerId) {
+      return isAuthenticated() && (
+        (businessOwnerId != null && businessOwnerId == request.auth.uid) ||
+        businessId == request.auth.uid ||
+        (
+          exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+          get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+        ) ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businessId == businessId
+        )
+      );
+    }
+
+    // Check if authenticated user is the assigned delivery partner for an order
+    function isOrderDeliveryPartner(deliveryPartnerId) {
+      return isAuthenticated() && (
+        deliveryPartnerId != null && deliveryPartnerId == request.auth.uid
+      );
+    }
+
+    // Check if authenticated user is the vendor owner of a delivery batch
+    function isVendorBatchOwner(vendorId, vendorOwnerId) {
+      return isAuthenticated() && (
+        vendorId == request.auth.uid ||
+        (vendorOwnerId != null && vendorOwnerId == request.auth.uid) ||
+        (
+          exists(/databases/$(database)/documents/businesses/$(vendorId)) &&
+          get(/databases/$(database)/documents/businesses/$(vendorId)).data.ownerId == request.auth.uid
+        ) ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businessId == vendorId
+        )
+      );
     }
 
     // Validate that required fields are present in the incoming resource
@@ -301,12 +379,13 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.keys().hasAll(['name', 'email', 'role']) &&
              data.keys().hasOnly([
-               'id', 'name', 'email', 'role', 'phone', 'avatar',
+               'id', 'name', 'email', 'role', 'status', 'phone', 'avatar',
                'businessId', 'createdAt', 'updatedAt'
              ]) &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              isValidEmail(data.email) &&
-             data.role in ['customer', 'restaurant_owner', 'vendor', 'delivery_partner', 'manager', 'admin'] &&
+             data.role in ['customer', 'restaurant_owner', 'hotel_owner', 'vendor', 'delivery_partner', 'manager', 'admin'] &&
+             (!('status' in data) || data.status in ['active', 'pending', 'suspended']) &&
              (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
              (!('avatar' in data) || (data.avatar is string && data.avatar.size() <= 500)) &&
@@ -340,7 +419,7 @@ service cloud.firestore {
              (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50));
     }
 
-    // Business (Restaurant / Vendor) Schema Validator
+    // Business (Restaurant / Hotel / Vendor) Schema Validator
     function isValidBusiness(data) {
       return data.keys().hasAll(['name', 'type', 'address', 'coordinates', 'rating', 'isOpen']) &&
              data.keys().hasOnly([
@@ -462,7 +541,7 @@ service cloud.firestore {
              (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50));
     }
 
-    // Delivery Batch Schema Validator (Multi-order TSP dynamic batching)
+    // Delivery Batch Schema Validator (Multi-order dynamic TSP routing)
     function isValidBatch(data) {
       return data.keys().hasAll([
                'batchCode', 'vendorId', 'status', 'orderIds',
@@ -569,11 +648,28 @@ service cloud.firestore {
              data.type in ['order', 'proximity', 'system', 'assignment', 'batch'] &&
              data.read is bool &&
              (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
-             (!('targetRole' in data) || (data.targetRole in ['all', 'customer', 'restaurant_owner', 'vendor', 'delivery_partner', 'manager', 'admin'])) &&
+             (!('targetRole' in data) || (data.targetRole in ['all', 'customer', 'restaurant_owner', 'hotel_owner', 'vendor', 'delivery_partner', 'manager', 'admin'])) &&
              (!('targetUserId' in data) || (data.targetUserId is string && data.targetUserId.size() <= 128)) &&
              (!('orderId' in data) || (data.orderId is string && data.orderId.size() <= 128)) &&
              (!('timestamp' in data) || (data.timestamp is string && data.timestamp.size() <= 50) || data.timestamp is timestamp) &&
              (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50));
+    }
+
+    // Activity Log Schema Validator (System Audit Trail)
+    function isValidActivityLog(data) {
+      return data.keys().hasAll(['actorId', 'actorName', 'action']) &&
+             data.keys().hasOnly([
+               'id', 'actorId', 'actorName', 'action',
+               'targetId', 'targetType', 'details', 'timestamp'
+             ]) &&
+             data.actorId is string && data.actorId.size() > 0 && data.actorId.size() <= 128 &&
+             data.actorName is string && data.actorName.size() > 0 && data.actorName.size() <= 100 &&
+             data.action is string && data.action.size() > 0 && data.action.size() <= 100 &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('targetId' in data) || (data.targetId is string && data.targetId.size() <= 128)) &&
+             (!('targetType' in data) || (data.targetType is string && data.targetType.size() <= 100)) &&
+             (!('details' in data) || (data.details is string && data.details.size() <= 1000)) &&
+             (!('timestamp' in data) || data.timestamp is timestamp || (data.timestamp is string && data.timestamp.size() <= 50));
     }
 
 
@@ -589,35 +685,43 @@ service cloud.firestore {
       // Operations managers and admins can read profiles for support and dispute handling.
       allow read: if isOwner(userId) || isManager();
 
-      // Account Creation & Self-Escalation Prevention:
+      // Account Registration & Privilege Escalation Prevention:
       // Users can only create their own user document matching their Auth UID.
-      // Unprivileged users CANNOT set privileged roles ('admin' or 'manager') on create.
+      // When registering, users cannot set role to 'admin' or 'manager'.
+      // Non-admins cannot register with 'suspended' status.
       allow create: if isAuthenticated() &&
                     request.auth.uid == userId &&
                     isValidUser(request.resource.data) &&
                     (
                       isAdmin() ||
-                      (request.resource.data.role in ['customer', 'restaurant_owner', 'vendor', 'delivery_partner'])
+                      (
+                        request.resource.data.role in ['customer', 'restaurant_owner', 'hotel_owner', 'vendor', 'delivery_partner'] &&
+                        (!('status' in request.resource.data) || request.resource.data.status in ['active', 'pending'])
+                      )
                     );
 
       // Profile Update & Privilege Escalation Lockdown:
-      // - Admins can update any user profile and reassign roles.
-      // - Normal users can update their profile, but CANNOT change their role or modify immutable fields (id, email).
-      // - Managers can update profile details for support, but CANNOT touch roles or admin accounts.
+      // - Only admins can modify roles or statuses.
+      // - Normal users can update their profile details (name, phone, avatar, businessId),
+      //   but can NEVER change their own role, status, or immutable fields (id, email).
+      // - Operations managers can assist with profile info for support, but CANNOT touch roles, statuses, or admin profiles.
       allow update: if isAuthenticated() &&
                     isValidUser(request.resource.data) &&
                     (
+                      // Only admins can modify roles or statuses
                       isAdmin() ||
+                      // Users updating their own profile: NEVER modify id, email, role, or status
                       (
                         request.auth.uid == userId &&
                         request.resource.data.role == resource.data.role &&
-                        areImmutableFieldsUnchanged(['id', 'email', 'role'])
+                        areImmutableFieldsUnchanged(['id', 'email', 'role', 'status'])
                       ) ||
+                      // Managers updating profile details for support: NEVER modify id, email, role, or status
                       (
                         isManager() &&
                         resource.data.role != 'admin' &&
                         request.resource.data.role == resource.data.role &&
-                        areImmutableFieldsUnchanged(['id', 'email', 'role'])
+                        areImmutableFieldsUnchanged(['id', 'email', 'role', 'status'])
                       )
                     );
 
@@ -676,28 +780,28 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
-    // 3. Businesses Collection (Restaurants & Vendors)
+    // 3. Businesses Collection (Restaurants, Hotels, Vendors)
     // ---------------------------------------------------------------
     match /businesses/{businessId} {
       // Public catalog: All authenticated users can browse businesses and operating hours.
       allow read: if isAuthenticated();
 
-      // Create: Supervisors or merchant creating their own business.
+      // Create: Admins or merchant creating their own business.
       allow create: if isAuthenticated() &&
                     isValidBusiness(request.resource.data) &&
                     (
-                      isManager() ||
+                      isAdmin() ||
                       (
                         request.resource.data.ownerId == request.auth.uid &&
                         request.resource.data.type in ['restaurant', 'street_vendor', 'bakery', 'chai_stall', 'grocery']
                       )
                     );
 
-      // Update: Supervisors or business owner. Core identity and ownership cannot be hijacked.
+      // Update: Admins or business owner. Core identity and ownership cannot be hijacked.
       allow update: if isAuthenticated() &&
                     isValidBusiness(request.resource.data) &&
                     (
-                      isManager() ||
+                      isAdmin() ||
                       (
                         resource.data.ownerId == request.auth.uid &&
                         areImmutableFieldsUnchanged(['id', 'ownerId', 'createdAt'])
@@ -709,87 +813,66 @@ service cloud.firestore {
 
       // Subcollection: Menu Items under Business
       match /menuItems/{itemId} {
+        // Publicly readable by all authenticated users
         allow read: if isAuthenticated();
 
+        // Only the respective business owner or admin can create menu items for that business
         allow create: if isAuthenticated() &&
                       isValidMenuItem(request.resource.data) &&
                       request.resource.data.businessId == businessId &&
-                      (
-                        isManager() ||
-                        (
-                          exists(/databases/$(database)/documents/businesses/$(businessId)) &&
-                          get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
-                        )
-                      );
+                      (isAdmin() || isBusinessOwner(businessId));
 
+        // Only the respective business owner or admin can update menu items for that business
         allow update: if isAuthenticated() &&
                       isValidMenuItem(request.resource.data) &&
                       request.resource.data.businessId == businessId &&
                       areImmutableFieldsUnchanged(['id', 'businessId', 'createdAt']) &&
-                      (
-                        isManager() ||
-                        (
-                          exists(/databases/$(database)/documents/businesses/$(businessId)) &&
-                          get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
-                        )
-                      );
+                      (isAdmin() || isBusinessOwner(businessId));
 
-        allow delete: if isManager() ||
-                      (
-                        exists(/databases/$(database)/documents/businesses/$(businessId)) &&
-                        get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
-                      );
+        // Only the respective business owner or admin can delete menu items for that business
+        allow delete: if isAdmin() || isBusinessOwner(businessId);
       }
     }
 
     // Top-Level Menu Items Collection (Direct query support)
     match /menuItems/{itemId} {
+      // Publicly readable by all authenticated users
       allow read: if isAuthenticated();
 
+      // Only the respective business owner or admin can create menu items for that business
       allow create: if isAuthenticated() &&
                     isValidMenuItem(request.resource.data) &&
-                    (
-                      isManager() ||
-                      (
-                        exists(/databases/$(database)/documents/businesses/$(request.resource.data.businessId)) &&
-                        get(/databases/$(database)/documents/businesses/$(request.resource.data.businessId)).data.ownerId == request.auth.uid
-                      )
-                    );
+                    (isAdmin() || isBusinessOwner(request.resource.data.businessId));
 
+      // Only the respective business owner or admin can update menu items for that business
       allow update: if isAuthenticated() &&
                     isValidMenuItem(request.resource.data) &&
                     areImmutableFieldsUnchanged(['id', 'businessId', 'createdAt']) &&
-                    (
-                      isManager() ||
-                      (
-                        exists(/databases/$(database)/documents/businesses/$(resource.data.businessId)) &&
-                        get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerId == request.auth.uid
-                      )
-                    );
+                    (isAdmin() || isBusinessOwner(resource.data.businessId));
 
-      allow delete: if isManager() ||
-                    (
-                      exists(/databases/$(database)/documents/businesses/$(resource.data.businessId)) &&
-                      get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerId == request.auth.uid
-                    );
+      // Only the respective business owner or admin can delete menu items for that business
+      allow delete: if isAdmin() || isBusinessOwner(resource.data.businessId);
     }
 
     // ---------------------------------------------------------------
     // 4. Orders Collection (Food Delivery & Logistics Lifecycle)
     // ---------------------------------------------------------------
     match /orders/{orderId} {
-      // Read: Customer, assigned courier, merchant owner, or operations supervisor.
+      // Read Data Isolation:
+      // - Customers can only read their own orders (customerId == request.auth.uid).
+      // - Hotel/Restaurant owners can only read orders matching their business (businessOwnerId == request.auth.uid or businessId owner).
+      // - Vendors can only read orders matching their stall/vendorId.
+      // - Delivery partners can only read orders assigned to them (deliveryPartnerId == request.auth.uid) OR ready for pickup.
+      // - Operations supervisors have administrative read oversight.
       allow read: if isManager() ||
                   (resource.data.customerId == request.auth.uid) ||
-                  (resource.data.deliveryPartnerId != null && resource.data.deliveryPartnerId == request.auth.uid) ||
-                  (resource.data.businessOwnerId != null && resource.data.businessOwnerId == request.auth.uid) ||
-                  (
-                    exists(/databases/$(database)/documents/businesses/$(resource.data.businessId)) &&
-                    get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerId == request.auth.uid
-                  );
+                  isOrderBusinessOwner(resource.data.businessId, resource.data.businessOwnerId) ||
+                  isOrderDeliveryPartner(resource.data.deliveryPartnerId) ||
+                  (resource.data.status == 'ready_for_pickup' && (getUserRole() == 'delivery_partner' || isManager()));
 
-      // Create: Authenticated customer placing an order for themselves (or manager dispatching).
-      // Customer orders start strictly with status 'pending'.
+      // Create: Authenticated customers can ONLY create their own orders (customerId == request.auth.uid).
+      // Initial status must strictly be 'pending'.
+      // Supervisors can also dispatch orders directly.
       allow create: if isAuthenticated() &&
                     isValidOrder(request.resource.data) &&
                     (
@@ -802,37 +885,33 @@ service cloud.firestore {
 
       // Update: Role-segregated workflow transitions:
       // 1. Manager/Admin supervisor override
-      // 2. Customer can only cancel their pending order (cannot alter billing/items)
-      // 3. Merchant (Restaurant/Vendor) advances kitchen/dispatch stages
-      // 4. Delivery Partner accepts, updates transit, triggers proximity alerts, and completes delivery via OTP
+      // 2. Customers can ONLY cancel pending orders (financials, items, and OTP locked).
+      // 3. Hotel/Restaurant owners & Vendors can update orders matching their business/stall (kitchen/dispatch stages).
+      // 4. Delivery partners can claim orders ready for pickup, progress transit, and complete delivery via OTP.
+      //    Delivery confirmation OTP cannot be bypassed.
       allow update: if isAuthenticated() &&
                     isValidOrder(request.resource.data) &&
                     (
                       // 1. Supervisor override
                       isManager() ||
 
-                      // 2. Customer cancellation (only while pending, financial totals locked)
+                      // 2. Customer cancellation: Can ONLY cancel pending orders; financial totals, items, and OTP locked
                       (
                         resource.data.customerId == request.auth.uid &&
+                        resource.data.status == 'pending' &&
+                        request.resource.data.status == 'cancelled' &&
                         areImmutableFieldsUnchanged([
                           'id', 'orderNumber', 'customerId', 'businessId', 'items',
                           'subtotal', 'tax', 'deliveryFee', 'discount', 'total',
                           'paymentMethod', 'paymentStatus', 'deliveryConfirmationCode',
                           'createdAt'
-                        ]) &&
-                        resource.data.status == 'pending' &&
-                        request.resource.data.status == 'cancelled'
+                        ])
                       ) ||
 
-                      // 3. Merchant order processing
+                      // 3. Hotel / Restaurant owner & Vendor order progression:
+                      // Can ONLY advance orders matching their business/stall; items, totals, customerId, and OTP locked
                       (
-                        (
-                          resource.data.businessOwnerId == request.auth.uid ||
-                          (
-                            exists(/databases/$(database)/documents/businesses/$(resource.data.businessId)) &&
-                            get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerId == request.auth.uid
-                          )
-                        ) &&
+                        isOrderBusinessOwner(resource.data.businessId, resource.data.businessOwnerId) &&
                         areImmutableFieldsUnchanged([
                           'id', 'orderNumber', 'customerId', 'businessId', 'items',
                           'subtotal', 'tax', 'deliveryFee', 'discount', 'total',
@@ -842,20 +921,25 @@ service cloud.firestore {
                         (
                           (resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'cancelled']) ||
                           (resource.data.status == 'accepted' && request.resource.data.status in ['preparing', 'cancelled']) ||
-                          (resource.data.status == 'preparing' && request.resource.data.status == 'ready_for_pickup')
+                          (resource.data.status == 'preparing' && request.resource.data.status in ['ready_for_pickup', 'cancelled'])
                         )
                       ) ||
 
-                      // 4. Delivery Partner assignment, transit updates, and OTP delivery completion
+                      // 4. Delivery Partner assignment, transit updates, and OTP delivery completion:
+                      // Delivery partners can only update orders assigned to them (or claiming ready for pickup).
+                      // Delivery confirmation OTP CANNOT be bypassed.
                       (
                         (
+                          // Already assigned to this courier
                           resource.data.deliveryPartnerId == request.auth.uid ||
+                          // Claiming unassigned order that is ready for pickup
                           (
                             resource.data.deliveryPartnerId == null &&
                             resource.data.status == 'ready_for_pickup' &&
                             request.resource.data.deliveryPartnerId == request.auth.uid
                           )
                         ) &&
+                        // Customer info, items, totals, and delivery OTP are strictly immutable by courier
                         areImmutableFieldsUnchanged([
                           'id', 'orderNumber', 'customerId', 'businessId', 'items',
                           'subtotal', 'tax', 'deliveryFee', 'discount', 'total',
@@ -869,14 +953,15 @@ service cloud.firestore {
                           (resource.data.status == 'assigned' && request.resource.data.status == 'picked_up') ||
                           // Out for delivery
                           (resource.data.status == 'picked_up' && request.resource.data.status == 'out_for_delivery') ||
-                          // Near destination (within 1-KM geofence)
+                          // Near destination (geofenced)
                           (resource.data.status == 'out_for_delivery' && request.resource.data.status == 'near_destination') ||
                           // Proximity alert flag update
                           (
                             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['proximityAlertTriggered', 'updatedAt', 'statusHistory']) &&
                             request.resource.data.proximityAlertTriggered == true
                           ) ||
-                          // Verified delivery: MUST provide matching 4-digit confirmation OTP
+                          // Verified delivery: MUST provide matching delivery confirmation OTP
+                          // Cannot jump directly to delivered without being in transit
                           (
                             request.resource.data.status == 'delivered' &&
                             resource.data.status in ['out_for_delivery', 'near_destination'] &&
@@ -895,13 +980,9 @@ service cloud.firestore {
     // ---------------------------------------------------------------
     match /batches/{batchId} {
       // Read: Supervisors, vendor owner, or assigned courier.
+      // Vendors can only access their own batches.
       allow read: if isManager() ||
-                  (resource.data.vendorId == request.auth.uid) ||
-                  (resource.data.vendorOwnerId != null && resource.data.vendorOwnerId == request.auth.uid) ||
-                  (
-                    exists(/databases/$(database)/documents/businesses/$(resource.data.vendorId)) &&
-                    get(/databases/$(database)/documents/businesses/$(resource.data.vendorId)).data.ownerId == request.auth.uid
-                  ) ||
+                  isVendorBatchOwner(resource.data.vendorId, resource.data.vendorOwnerId) ||
                   (resource.data.deliveryPartnerId != null && resource.data.deliveryPartnerId == request.auth.uid);
 
       // Create: Supervisors or vendor creating a batch for their own establishment.
@@ -909,55 +990,38 @@ service cloud.firestore {
                     isValidBatch(request.resource.data) &&
                     (
                       isManager() ||
-                      request.resource.data.vendorId == request.auth.uid ||
-                      (
-                        exists(/databases/$(database)/documents/businesses/$(request.resource.data.vendorId)) &&
-                        get(/databases/$(database)/documents/businesses/$(request.resource.data.vendorId)).data.ownerId == request.auth.uid
-                      )
+                      isVendorBatchOwner(request.resource.data.vendorId, request.resource.data.vendorOwnerId)
                     );
 
       // Update:
       // - Supervisors can modify batches.
-      // - Vendor owner can re-sequence, assign couriers, or update batch details.
-      // - Assigned courier can advance stops (currentStopIndex, stops status, status in_progress/completed).
+      // - Vendors can manage and re-sequence their own batches.
+      // - Assigned delivery partners can ONLY update stop progression (status, stops, currentStopIndex, updatedAt).
       allow update: if isAuthenticated() &&
                     isValidBatch(request.resource.data) &&
                     (
                       isManager() ||
                       (
-                        (
-                          resource.data.vendorId == request.auth.uid ||
-                          resource.data.vendorOwnerId == request.auth.uid ||
-                          (
-                            exists(/databases/$(database)/documents/businesses/$(resource.data.vendorId)) &&
-                            get(/databases/$(database)/documents/businesses/$(resource.data.vendorId)).data.ownerId == request.auth.uid
-                          )
-                        ) &&
+                        isVendorBatchOwner(resource.data.vendorId, resource.data.vendorOwnerId) &&
                         areImmutableFieldsUnchanged(['id', 'batchCode', 'vendorId', 'createdAt'])
                       ) ||
                       (
                         resource.data.deliveryPartnerId == request.auth.uid &&
                         areImmutableFieldsUnchanged([
                           'id', 'batchCode', 'vendorId', 'deliveryPartnerId',
-                          'totalDistanceKm', 'estimatedTimeMin', 'createdAt'
+                          'totalDistanceKm', 'estimatedTimeMin', 'orderIds', 'createdAt'
                         ]) &&
                         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                           'status', 'stops', 'currentStopIndex', 'updatedAt'
-                        ])
+                        ]) &&
+                        request.resource.data.status in ['assigned', 'in_progress', 'completed']
                       )
                     );
 
       // Delete: Supervisors or vendor owner (only when draft, suggested, or cancelled).
       allow delete: if isManager() ||
                     (
-                      (
-                        resource.data.vendorId == request.auth.uid ||
-                        resource.data.vendorOwnerId == request.auth.uid ||
-                        (
-                          exists(/databases/$(database)/documents/businesses/$(resource.data.vendorId)) &&
-                          get(/databases/$(database)/documents/businesses/$(resource.data.vendorId)).data.ownerId == request.auth.uid
-                        )
-                      ) &&
+                      isVendorBatchOwner(resource.data.vendorId, resource.data.vendorOwnerId) &&
                       resource.data.status in ['draft', 'suggested', 'cancelled']
                     );
     }
@@ -976,14 +1040,17 @@ service cloud.firestore {
 
       // Update:
       // - Supervisors can manage driver records.
-      // - Drivers can update their GPS coordinates, online state, and active delivery IDs,
-      //   but CANNOT tamper with rating, total deliveries count, or earnings.
+      // - Drivers can ONLY update their own GPS coords, online status, active order/batch references, and timestamp.
+      // - Drivers CANNOT tamper with rating, earnings, totalDeliveries, or vehicle details.
       allow update: if isAuthenticated() &&
                     isValidDriver(request.resource.data) &&
                     (
                       isManager() ||
                       (
                         request.auth.uid == driverId &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                          'currentCoords', 'isOnline', 'activeOrderId', 'activeBatchId', 'updatedAt'
+                        ]) &&
                         areImmutableFieldsUnchanged([
                           'id', 'rating', 'totalDeliveries', 'earningsToday', 'createdAt'
                         ])
@@ -994,7 +1061,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Driver collection alias (support for either collection name)
+    // Driver collection alias (support for alternate collection path)
     match /drivers/{driverId} {
       allow read: if isAuthenticated();
 
@@ -1008,6 +1075,9 @@ service cloud.firestore {
                       isManager() ||
                       (
                         request.auth.uid == driverId &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                          'currentCoords', 'isOnline', 'activeOrderId', 'activeBatchId', 'updatedAt'
+                        ]) &&
                         areImmutableFieldsUnchanged([
                           'id', 'rating', 'totalDeliveries', 'earningsToday', 'createdAt'
                         ])
@@ -1021,23 +1091,37 @@ service cloud.firestore {
     // 7. Invoices Collection (Printable Tax & Accounting Records)
     // ---------------------------------------------------------------
     match /invoices/{invoiceId} {
-      // Read: Customer, merchant owner, or operations supervisor.
-      allow read: if isManager() ||
+      // Read: Customers and merchants can only read their own invoices; admins have full access.
+      allow read: if isAdmin() ||
                   (resource.data.customerId != null && resource.data.customerId == request.auth.uid) ||
-                  (resource.data.vendorId != null && resource.data.vendorId == request.auth.uid);
+                  (
+                    resource.data.vendorId != null &&
+                    (
+                      resource.data.vendorId == request.auth.uid ||
+                      isOrderBusinessOwner(resource.data.vendorId, null)
+                    )
+                  );
 
-      // Create: Supervisors, system, or vendor generating invoice for their order.
+      // Create: Admins or merchant generating an invoice for their establishment.
       allow create: if isAuthenticated() &&
                     isValidInvoice(request.resource.data) &&
                     (
-                      isManager() ||
-                      (request.resource.data.vendorId != null && request.resource.data.vendorId == request.auth.uid)
+                      isAdmin() ||
+                      (
+                        request.resource.data.vendorId != null &&
+                        (
+                          request.resource.data.vendorId == request.auth.uid ||
+                          isOrderBusinessOwner(request.resource.data.vendorId, null)
+                        )
+                      )
                     );
 
-      // Update: Invoices are legal financial documents; non-admins cannot modify invoices.
-      allow update: if isAdmin();
+      // Update: Invoices are legal financial documents; admins have full access, non-admins cannot update.
+      allow update: if isAuthenticated() &&
+                    isValidInvoice(request.resource.data) &&
+                    isAdmin();
 
-      // Delete: Strictly disallowed (maintains permanent tax audit compliance).
+      // Delete: Strictly disallowed for all users and admins to ensure immutable tax compliance.
       allow delete: if false;
     }
 
@@ -1076,6 +1160,25 @@ service cloud.firestore {
 
       // Delete: Targeted user or supervisor.
       allow delete: if isManager() || (resource.data.targetUserId == request.auth.uid);
+    }
+
+    // ---------------------------------------------------------------
+    // 9. Activity Logs Collection (Append-Only Audit Trail)
+    // ---------------------------------------------------------------
+    match /activityLogs/{logId} {
+      // Read: Supervisors and administrators only.
+      allow read: if isManager();
+
+      // Create: Authenticated users logging their platform actions or supervisors.
+      allow create: if isAuthenticated() &&
+                    isValidActivityLog(request.resource.data) &&
+                    (isManager() || request.resource.data.actorId == request.auth.uid);
+
+      // Update: Disallowed (Audit trail is immutable).
+      allow update: if false;
+
+      // Delete: Restricted to System Administrators.
+      allow delete: if isAdmin();
     }
 
   }

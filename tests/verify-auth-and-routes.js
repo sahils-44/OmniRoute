@@ -1,5 +1,6 @@
 // tests/verify-auth-and-routes.js
 // Automated verification suite for OmniRoute™ Multi-Role Authentication & Role-Based Routing System
+// Verifies: Strict Role Isolation, Immediate Active Status (No Pending Approval), and Public Admin Prohibition
 
 import assert from 'node:assert';
 
@@ -23,6 +24,7 @@ function isRoleAllowed(userRole, allowedRoles) {
 const ROLE_ROUTE_CONFIG = {
   customer: {
     allowedRoles: ['customer'],
+    dashboard: '/customer/dashboard',
     routes: [
       '/customer/dashboard',
       '/customer/orders',
@@ -32,6 +34,7 @@ const ROLE_ROUTE_CONFIG = {
   },
   hotel: {
     allowedRoles: ['restaurant_owner', 'hotel_owner'],
+    dashboard: '/hotel/dashboard',
     routes: [
       '/hotel/dashboard',
       '/hotel/orders',
@@ -43,6 +46,7 @@ const ROLE_ROUTE_CONFIG = {
   },
   vendor: {
     allowedRoles: ['vendor'],
+    dashboard: '/vendor/dashboard',
     routes: [
       '/vendor/dashboard',
       '/vendor/orders',
@@ -54,6 +58,7 @@ const ROLE_ROUTE_CONFIG = {
   },
   delivery: {
     allowedRoles: ['delivery_partner'],
+    dashboard: '/delivery/dashboard',
     routes: [
       '/delivery/dashboard',
       '/delivery/assignments',
@@ -65,6 +70,7 @@ const ROLE_ROUTE_CONFIG = {
   },
   admin: {
     allowedRoles: ['admin'],
+    dashboard: '/admin/dashboard',
     routes: [
       '/admin/dashboard',
       '/admin/users',
@@ -79,48 +85,54 @@ const ROLE_ROUTE_CONFIG = {
 };
 
 // ----------------------------------------------------
-// TEST 1: Role Isolation & Cross-Role Access Guard
+// TEST 1: Strict Role Isolation Matrix
 // ----------------------------------------------------
-console.log('👉 Running TEST 1: Strict Role Isolation & Guard Verification...');
+console.log('👉 Running TEST 1: Strict Role-Based Dashboard Isolation Matrix...');
 
-// Customer accessing routes
+// 1. Customer: allowed only on customer routes; blocked on all other dashboards
 assert.strictEqual(isRoleAllowed('customer', ROLE_ROUTE_CONFIG.customer.allowedRoles), true);
 assert.strictEqual(isRoleAllowed('customer', ROLE_ROUTE_CONFIG.hotel.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('customer', ROLE_ROUTE_CONFIG.vendor.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('customer', ROLE_ROUTE_CONFIG.delivery.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('customer', ROLE_ROUTE_CONFIG.admin.allowedRoles), false);
 
-// Hotel Owner / Restaurant Owner equivalence
+// 2. Hotel Owner / Restaurant Owner: allowed only on hotel routes; blocked on others
 assert.strictEqual(isRoleAllowed('hotel_owner', ROLE_ROUTE_CONFIG.hotel.allowedRoles), true);
 assert.strictEqual(isRoleAllowed('restaurant_owner', ROLE_ROUTE_CONFIG.hotel.allowedRoles), true);
+assert.strictEqual(isRoleAllowed('hotel_owner', ROLE_ROUTE_CONFIG.customer.allowedRoles), false);
+assert.strictEqual(isRoleAllowed('hotel_owner', ROLE_ROUTE_CONFIG.vendor.allowedRoles), false);
+assert.strictEqual(isRoleAllowed('hotel_owner', ROLE_ROUTE_CONFIG.delivery.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('hotel_owner', ROLE_ROUTE_CONFIG.admin.allowedRoles), false);
-assert.strictEqual(isRoleAllowed('restaurant_owner', ROLE_ROUTE_CONFIG.customer.allowedRoles), false);
 
-// Vendor accessing routes
+// 3. Vendor: allowed only on vendor routes; blocked on others
 assert.strictEqual(isRoleAllowed('vendor', ROLE_ROUTE_CONFIG.vendor.allowedRoles), true);
+assert.strictEqual(isRoleAllowed('vendor', ROLE_ROUTE_CONFIG.customer.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('vendor', ROLE_ROUTE_CONFIG.hotel.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('vendor', ROLE_ROUTE_CONFIG.delivery.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('vendor', ROLE_ROUTE_CONFIG.admin.allowedRoles), false);
 
-// Delivery Partner accessing routes
+// 4. Delivery Partner: allowed only on delivery routes; blocked on others
 assert.strictEqual(isRoleAllowed('delivery_partner', ROLE_ROUTE_CONFIG.delivery.allowedRoles), true);
+assert.strictEqual(isRoleAllowed('delivery_partner', ROLE_ROUTE_CONFIG.customer.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('delivery_partner', ROLE_ROUTE_CONFIG.hotel.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('delivery_partner', ROLE_ROUTE_CONFIG.vendor.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('delivery_partner', ROLE_ROUTE_CONFIG.admin.allowedRoles), false);
 
-// Admin accessing admin routes
+// 5. Admin: allowed only on admin routes; blocked on role-specific merchant/courier/customer dashboards
 assert.strictEqual(isRoleAllowed('admin', ROLE_ROUTE_CONFIG.admin.allowedRoles), true);
 assert.strictEqual(isRoleAllowed('admin', ROLE_ROUTE_CONFIG.customer.allowedRoles), false);
 assert.strictEqual(isRoleAllowed('admin', ROLE_ROUTE_CONFIG.hotel.allowedRoles), false);
+assert.strictEqual(isRoleAllowed('admin', ROLE_ROUTE_CONFIG.vendor.allowedRoles), false);
+assert.strictEqual(isRoleAllowed('admin', ROLE_ROUTE_CONFIG.delivery.allowedRoles), false);
 
-console.log('   ✅ TEST 1 PASSED: Role boundaries completely isolated with zero leakage.');
+console.log('   ✅ TEST 1 PASSED: Strict role-based isolation verified across all 5 roles.');
 
 // ----------------------------------------------------
-// TEST 2: Registration Security & Admin Self-Registration Prevention
+// TEST 2: Immediate Active Status for All Normal Roles (No Pending)
 // ----------------------------------------------------
-console.log('👉 Running TEST 2: Registration Validation & Admin Self-Registration Guard...');
+console.log('👉 Running TEST 2: Immediate Active Status on Registration (No Pending Approval)...');
 
-function validateRegistrationPayload(payload) {
+function registerAccount(payload) {
   if (!payload.email || !payload.email.includes('@')) {
     throw new Error('Valid email required');
   }
@@ -138,96 +150,120 @@ function validateRegistrationPayload(payload) {
     throw new Error('Invalid registration role');
   }
 
-  // Account status rules:
-  // Customers are immediately active; merchants and couriers require administrative approval
-  const status = payload.role === 'customer' ? 'active' : 'pending';
+  // All normal registration roles receive status: "active" immediately!
+  const status = 'active';
+
+  // Determine redirect dashboard path
+  let dashboardPath = '/customer/dashboard';
+  if (payload.role === 'restaurant_owner' || payload.role === 'hotel_owner') {
+    dashboardPath = '/hotel/dashboard';
+  } else if (payload.role === 'vendor') {
+    dashboardPath = '/vendor/dashboard';
+  } else if (payload.role === 'delivery_partner') {
+    dashboardPath = '/delivery/dashboard';
+  }
 
   return {
     email: payload.email,
     name: payload.name || payload.email.split('@')[0],
     role: payload.role,
     phone: payload.phone || '+91 98201 12345',
-    status
+    status,
+    dashboardPath
   };
 }
 
-// Valid customer registration
-const validCustomer = validateRegistrationPayload({
-  email: 'customer.test@example.com',
-  name: 'Aarav Sharma',
-  phone: '+91 98111 22233',
+// 1. Customer registers -> active -> /customer/dashboard
+const regCustomer = registerAccount({
+  email: 'customer@test.com',
+  name: 'Aarav Mehta',
+  phone: '+91 98201 12345',
   password: 'Password123!',
   confirmPassword: 'Password123!',
   role: 'customer'
 });
-assert.strictEqual(validCustomer.status, 'active');
+assert.strictEqual(regCustomer.status, 'active');
+assert.strictEqual(regCustomer.dashboardPath, '/customer/dashboard');
 
-// Valid hotel owner registration (starts pending)
-const validHotel = validateRegistrationPayload({
-  email: 'chef.taj@example.com',
+// 2. Hotel Owner registers -> active -> /hotel/dashboard (NO PENDING)
+const regHotel = registerAccount({
+  email: 'rajesh@royalgrand.com',
   name: 'Chef Rajesh',
-  phone: '+91 98222 33344',
-  password: 'TajPassword123!',
-  confirmPassword: 'TajPassword123!',
+  phone: '+91 98202 23456',
+  password: 'Password123!',
+  confirmPassword: 'Password123!',
   role: 'restaurant_owner'
 });
-assert.strictEqual(validHotel.status, 'pending');
+assert.strictEqual(regHotel.status, 'active');
+assert.strictEqual(regHotel.dashboardPath, '/hotel/dashboard');
 
-// Prohibit Admin registration
+// 3. Vendor registers -> active -> /vendor/dashboard (NO PENDING)
+const regVendor = registerAccount({
+  email: 'ramesh@sharmachai.com',
+  name: 'Ramesh Sharma',
+  phone: '+91 98203 34567',
+  password: 'Password123!',
+  confirmPassword: 'Password123!',
+  role: 'vendor'
+});
+assert.strictEqual(regVendor.status, 'active');
+assert.strictEqual(regVendor.dashboardPath, '/vendor/dashboard');
+
+// 4. Delivery Partner registers -> active -> /delivery/dashboard (NO PENDING)
+const regCourier = registerAccount({
+  email: 'vikram@courier.com',
+  name: 'Vikram Rane',
+  phone: '+91 98204 45678',
+  password: 'Password123!',
+  confirmPassword: 'Password123!',
+  role: 'delivery_partner'
+});
+assert.strictEqual(regCourier.status, 'active');
+assert.strictEqual(regCourier.dashboardPath, '/delivery/dashboard');
+
+// 5. Public Admin Registration strictly rejected
 let adminBlocked = false;
 try {
-  validateRegistrationPayload({
-    email: 'hacker@example.com',
+  registerAccount({
+    email: 'intruder@domain.com',
     name: 'Fake Admin',
-    password: 'AdminPassword123!',
-    confirmPassword: 'AdminPassword123!',
+    password: 'Password123!',
+    confirmPassword: 'Password123!',
     role: 'admin'
   });
 } catch (e) {
   adminBlocked = true;
   assert.strictEqual(e.message, 'Admin registration is not allowed through the public portal.');
 }
-assert.strictEqual(adminBlocked, true, 'Admin registration must be strictly blocked');
+assert.strictEqual(adminBlocked, true, 'Admin registration must be strictly rejected');
 
-console.log('   ✅ TEST 2 PASSED: Public registration strictly prevents admin account creation.');
+console.log('   ✅ TEST 2 PASSED: All 4 normal roles receive active status immediately with instant dashboard routing.');
 
 // ----------------------------------------------------
-// TEST 3: Merchant & Courier Verification Lifecycle
+// TEST 3: Account Suspension Enforcement
 // ----------------------------------------------------
-console.log('👉 Running TEST 3: Verification & Approval Lifecycle for Partners...');
+console.log('👉 Running TEST 3: Account Suspension Validation...');
 
-let partnerAccount = {
-  id: 'partner-uid-101',
-  name: 'Mumbai Chai Corner',
-  role: 'vendor',
-  status: 'pending'
-};
-
-assert.strictEqual(partnerAccount.status, 'pending');
-
-// Admin approves partner
-function adminApprovePartner(account) {
-  return { ...account, status: 'active', approvedAt: new Date().toISOString() };
+function checkAccountAccess(account) {
+  if (account.status === 'suspended') {
+    return { access: false, redirect: '/unauthorized', reason: 'Account suspended' };
+  }
+  return { access: true, redirect: ROLE_ROUTE_CONFIG[account.role]?.dashboard || '/customer/dashboard' };
 }
 
-// Admin suspends partner
-function adminSuspendPartner(account) {
-  return { ...account, status: 'suspended', suspendedAt: new Date().toISOString() };
-}
+const activeUser = { role: 'customer', status: 'active' };
+const suspendedUser = { role: 'customer', status: 'suspended' };
 
-partnerAccount = adminApprovePartner(partnerAccount);
-assert.strictEqual(partnerAccount.status, 'active');
-assert.ok(partnerAccount.approvedAt);
+assert.strictEqual(checkAccountAccess(activeUser).access, true);
+assert.strictEqual(checkAccountAccess(suspendedUser).access, false);
+assert.strictEqual(checkAccountAccess(suspendedUser).redirect, '/unauthorized');
 
-partnerAccount = adminSuspendPartner(partnerAccount);
-assert.strictEqual(partnerAccount.status, 'suspended');
-
-console.log('   ✅ TEST 3 PASSED: Partner verification lifecycle (pending -> active -> suspended) verified.');
+console.log('   ✅ TEST 3 PASSED: Account suspension blocks access and redirects to /unauthorized.');
 
 // ----------------------------------------------------
-// TEST 4: All 28 Required Endpoints Covered
+// TEST 4: All 32 Required Endpoints Cataloged
 // ----------------------------------------------------
-console.log('👉 Running TEST 4: Verification of All Required Endpoints...');
+console.log('👉 Running TEST 4: Verification of All 32 Required Endpoints...');
 
 const REQUIRED_ENDPOINTS = [
   // Public
@@ -277,11 +313,10 @@ const REQUIRED_ENDPOINTS = [
   '/admin/settings',
 ];
 
-console.log(`   Auditing ${REQUIRED_ENDPOINTS.length} operational routes...`);
 REQUIRED_ENDPOINTS.forEach(endpoint => {
   assert.ok(endpoint.startsWith('/'), `Invalid route format: ${endpoint}`);
 });
 
-console.log('   ✅ TEST 4 PASSED: All 32 required routes defined and cataloged.');
+console.log(`   ✅ TEST 4 PASSED: All ${REQUIRED_ENDPOINTS.length} operational routes verified.`);
 
 console.log('\n🎉 ALL MULTI-ROLE AUTH & ROUTING TESTS PASSED WITH 100% SUCCESS!');
