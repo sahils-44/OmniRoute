@@ -42,11 +42,14 @@ export const MapViewer: React.FC<MapViewerProps> = ({
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
     const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY;
-    const isMapTilerConfigured = MAPTILER_KEY && MAPTILER_KEY !== 'your_maptiler_api_key';
+    const isMapTilerConfigured = Boolean(
+      MAPTILER_KEY &&
+      MAPTILER_KEY.trim() !== '' &&
+      MAPTILER_KEY !== 'your_maptiler_api_key'
+    );
 
-    const tileUrl = isMapTilerConfigured
-      ? `https://api.maptiler.com/maps/dataviz-dark/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`
-      : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+    const maptilerUrl = `https://api.maptiler.com/maps/dataviz-dark/256/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`;
+    const cartoFallbackUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 
     const map = L.map(mapContainerRef.current, {
       center: [center.lat, center.lng],
@@ -55,22 +58,50 @@ export const MapViewer: React.FC<MapViewerProps> = ({
       attributionControl: true,
     });
 
-    // MapTiler Dataviz Dark Basemap Layer
-    L.tileLayer(tileUrl, {
+    // Primary Basemap Layer with Auto-fallback to CartoDB on error
+    const primaryTileUrl = isMapTilerConfigured ? maptilerUrl : cartoFallbackUrl;
+    let switchedToFallback = !isMapTilerConfigured;
+
+    const tileLayer = L.tileLayer(primaryTileUrl, {
       maxZoom: 19,
-      tileSize: 512,
-      zoomOffset: isMapTilerConfigured ? -1 : 0,
+      tileSize: 256,
       subdomains: isMapTilerConfigured ? '' : 'abcd',
       attribution: isMapTilerConfigured
         ? '&copy; <a href="https://www.maptiler.com/copyright/" target="_blank">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
         : '&copy; <a href="https://carto.com/">CartoDB</a>',
-    }).addTo(map);
+    });
+
+    // If MapTiler tiles fail (e.g. Origin restriction, invalid key, or network issue), seamlessly fallback to CartoDB dark tiles
+    tileLayer.on('tileerror', () => {
+      if (!switchedToFallback) {
+        switchedToFallback = true;
+        console.warn('[MapViewer] MapTiler tile failed to load; switching to CartoDB Dark fallback.');
+        tileLayer.setUrl(cartoFallbackUrl);
+      }
+    });
+
+    tileLayer.addTo(map);
 
     const layerGroup = L.layerGroup().addTo(map);
     layersRef.current = layerGroup;
     mapInstanceRef.current = map;
 
+    // Invalidate map size after initial DOM paint to ensure full tile coverage
+    const sizeTimer = setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
+
+    // Watch for container resize (e.g. tab switch, drawer collapse, window resize)
+    const resizeObserver = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+    if (mapContainerRef.current) {
+      resizeObserver.observe(mapContainerRef.current);
+    }
+
     return () => {
+      clearTimeout(sizeTimer);
+      resizeObserver.disconnect();
       map.remove();
       mapInstanceRef.current = null;
     };
@@ -208,6 +239,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         </div>
       `);
     });
+
+    map.invalidateSize();
 
     // Auto-fit bounds if we have points
     if (bounds.isValid() && (markers.length > 1 || routePolyline.length > 0)) {
