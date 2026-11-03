@@ -26,6 +26,14 @@ import {
   optimizeMultiOrderRoute,
 } from '../services/routingEngine';
 import { soundService } from '../services/soundService';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { auth } from '../lib/firebase';
+import {
+  loginUser as fbLoginUser,
+  registerUser as fbRegisterUser,
+  logoutUser as fbLogoutUser,
+  getUserProfile,
+} from '../services/authService';
 
 interface AppContextType {
   // Authentication & Role
@@ -33,6 +41,15 @@ interface AppContextType {
   allUsers: User[];
   switchUser: (userId: string) => void;
   switchRole: (role: UserRole) => void;
+
+  // Firebase Authentication
+  firebaseUser: FirebaseUser | null;
+  authLoading: boolean;
+  loginUser: (email: string, password: string) => Promise<FirebaseUser>;
+  registerUser: (email: string, password: string, displayName?: string, role?: UserRole) => Promise<FirebaseUser>;
+  logoutUser: () => Promise<void>;
+  isGuestDemo: boolean;
+  loginDemoRole: (role: UserRole) => void;
 
   // Businesses & Menus
   businesses: Business[];
@@ -96,11 +113,60 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Firebase Authentication State
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [isGuestDemo, setIsGuestDemo] = useState<boolean>(() => {
+    return localStorage.getItem('omniroute_is_guest') === 'true';
+  });
+
   // Local persistence helpers with fallbacks
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const saved = localStorage.getItem('omniroute_user');
     return saved ? JSON.parse(saved) : INITIAL_USERS[0];
   });
+
+  // Maintain login session automatically with Firebase onAuthStateChanged
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUserState) => {
+      setFirebaseUser(currentUserState);
+      if (currentUserState) {
+        setIsGuestDemo(false);
+        localStorage.removeItem('omniroute_is_guest');
+        try {
+          const profile = await getUserProfile(currentUserState.uid);
+          if (profile) {
+            setCurrentUser({
+              id: currentUserState.uid,
+              name: profile.name || currentUserState.displayName || currentUserState.email?.split('@')[0] || 'User',
+              email: currentUserState.email || '',
+              role: profile.role || 'customer',
+              phone: profile.phone || '+91 98201 12345',
+              avatar: profile.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+              businessId: profile.businessId,
+            });
+          } else {
+            setCurrentUser(prev => ({
+              ...prev,
+              id: currentUserState.uid,
+              name: currentUserState.displayName || currentUserState.email?.split('@')[0] || prev.name,
+              email: currentUserState.email || prev.email,
+            }));
+          }
+        } catch {
+          setCurrentUser(prev => ({
+            ...prev,
+            id: currentUserState.uid,
+            name: currentUserState.displayName || currentUserState.email?.split('@')[0] || prev.name,
+            email: currentUserState.email || prev.email,
+          }));
+        }
+      }
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const [businesses, setBusinesses] = useState<Business[]>(() => {
     const saved = localStorage.getItem('omniroute_businesses');
@@ -859,6 +925,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => navigator.geolocation.clearWatch(watchId);
   }, [isRealGpsActive, currentUser, updateDriverLocation]);
 
+  const loginUser = useCallback(async (email: string, pass: string) => {
+    const user = await fbLoginUser(email, pass);
+    soundService.playSuccessDeliverySound();
+    return user;
+  }, []);
+
+  const registerUser = useCallback(async (email: string, pass: string, name?: string, role?: UserRole) => {
+    const user = await fbRegisterUser(email, pass, name, role);
+    soundService.playSuccessDeliverySound();
+    return user;
+  }, []);
+
+  const logoutUser = useCallback(async () => {
+    await fbLogoutUser();
+    setFirebaseUser(null);
+    setIsGuestDemo(false);
+    localStorage.removeItem('omniroute_is_guest');
+    soundService.playStatusUpdateSound();
+  }, []);
+
+  const loginDemoRole = useCallback((role: UserRole) => {
+    const matching = INITIAL_USERS.find(u => u.role === role) || INITIAL_USERS[0];
+    setCurrentUser(matching);
+    setIsGuestDemo(true);
+    localStorage.setItem('omniroute_is_guest', 'true');
+    soundService.playSuccessDeliverySound();
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -866,6 +960,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         allUsers: INITIAL_USERS,
         switchUser,
         switchRole,
+        firebaseUser,
+        authLoading,
+        loginUser,
+        registerUser,
+        logoutUser,
+        isGuestDemo,
+        loginDemoRole,
         businesses,
         menuItems,
         updateBusiness,

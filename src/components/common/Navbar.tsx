@@ -16,6 +16,7 @@ import {
   Bike,
   ShieldAlert,
   Check,
+  LogOut,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -25,6 +26,9 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
   const {
     currentUser,
+    firebaseUser,
+    logoutUser,
+    isGuestDemo,
     switchRole,
     cart,
     notifications,
@@ -230,6 +234,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
                 <div className="px-3 py-2 border-b border-white/10">
                   <p className="text-xs font-bold text-white truncate">{currentUser.name}</p>
                   <p className="text-[10px] text-gold-400 capitalize">{currentUser.role.replace('_', ' ')}</p>
+                  <p className="text-[10px] text-slate-400 font-mono truncate mt-0.5">
+                    {firebaseUser?.email || (isGuestDemo ? 'Demo Mode Active' : currentUser.email)}
+                  </p>
                 </div>
 
                 <div className="mt-1 py-1">
@@ -260,6 +267,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
                       </button>
                     );
                   })}
+                </div>
+
+                <div className="pt-1 mt-1 border-t border-white/10">
+                  <button
+                    onClick={async () => {
+                      setShowRoleMenu(false);
+                      await logoutUser();
+                    }}
+                    className="w-full flex items-center space-x-2 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
+                  </button>
                 </div>
               </div>
             )}

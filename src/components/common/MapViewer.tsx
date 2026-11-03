@@ -41,17 +41,29 @@ export const MapViewer: React.FC<MapViewerProps> = ({
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
+    const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY;
+    const isMapTilerConfigured = MAPTILER_KEY && MAPTILER_KEY !== 'your_maptiler_api_key';
+
+    const tileUrl = isMapTilerConfigured
+      ? `https://api.maptiler.com/maps/dataviz-dark/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`
+      : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+
     const map = L.map(mapContainerRef.current, {
       center: [center.lat, center.lng],
       zoom,
       zoomControl: true,
-      attributionControl: false,
+      attributionControl: true,
     });
 
-    // Dark Matter CartoDB Basemap
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // MapTiler Dataviz Dark Basemap Layer
+    L.tileLayer(tileUrl, {
       maxZoom: 19,
-      subdomains: 'abcd',
+      tileSize: 512,
+      zoomOffset: isMapTilerConfigured ? -1 : 0,
+      subdomains: isMapTilerConfigured ? '' : 'abcd',
+      attribution: isMapTilerConfigured
+        ? '&copy; <a href="https://www.maptiler.com/copyright/" target="_blank">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
+        : '&copy; <a href="https://carto.com/">CartoDB</a>',
     }).addTo(map);
 
     const layerGroup = L.layerGroup().addTo(map);

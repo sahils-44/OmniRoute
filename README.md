@@ -98,12 +98,54 @@ node tests/verify-all-scenarios.js
 
 ---
 
+## 🔐 Firebase & Cloud Integration
+
+OmniRoute is connected to real Google Firebase services and MapTiler Cloud:
+
+### 1. Environment Configuration (`.env`)
+Create a `.env` file in the root directory (a template is provided in `.env.example`):
+```env
+VITE_FIREBASE_API_KEY=AIzaSyDRs1raOcgvLOR0aopl3vDpSx_9LqN7l-E
+VITE_FIREBASE_AUTH_DOMAIN=omniroute-cep.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=omniroute-cep
+VITE_FIREBASE_STORAGE_BUCKET=omniroute-cep.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=1064467555265
+VITE_FIREBASE_APP_ID=1:1064467555265:web:9352ede00ef666c4414540
+VITE_MAPTILER_API_KEY=HnFKjuxLz2I1IfboVn4P
+```
+
+### 2. Dual Authentication Architecture
+- **Real Firebase Accounts**: Users can register and sign in with email and password via `signInWithEmailAndPassword` and `createUserWithEmailAndPassword`. User sessions are automatically maintained across browser refreshes via `onAuthStateChanged`.
+- **Instant Demo Switcher**: For quick evaluation and stakeholder reviews, one-click access is available for all 5 roles (Customer, Hotel Owner, Street Vendor, Courier, Admin) without manual registration.
+
+### 3. Deploying Firestore Security Rules
+Production-grade Firestore Security Rules are specified in `firestore.rules`. To deploy them to your Firebase project:
+```bash
+# Login to Firebase CLI
+firebase login
+
+# Set active project
+firebase use omniroute-cep
+
+# Deploy security rules
+firebase deploy --only firestore:rules
+```
+
+### 4. MapTiler Cloud Setup
+Map tiles use MapTiler Dataviz Dark (`https://api.maptiler.com/maps/dataviz-dark/{z}/{x}/{y}.png?key=...`) with seamless CartoDB dark fallback. Ensure your MapTiler API Key has the following Allowed HTTP Origins configured in [MapTiler Cloud](https://cloud.maptiler.com/):
+- `http://localhost:5173`
+- `http://127.0.0.1:5173`
+- Your production hosting domain
+
+---
+
 ## 🛠️ Architecture & Tech Stack
 
 * **Frontend Framework**: React 19, TypeScript, Vite 8 (Rolldown engine)
+* **Backend & Auth**: Google Firebase Auth & Cloud Firestore (`firebase/app`, `firebase/auth`, `firebase/firestore`)
 * **Styling**: Tailwind CSS v4, PostCSS, Custom Glassmorphism design system
 * **3D Graphics**: Three.js WebGL procedural renderer with ACESFilmic tonemapping
-* **Mapping**: Leaflet 1.9 with dark CartoDB tiles and custom SVG pulsing radar pins
+* **Mapping**: Leaflet 1.9 with MapTiler Dataviz Dark tiles & custom SVG pulsing radar pins
 * **Audio**: Native Web Audio API procedural synthesizers (zero broken audio links)
 * **Icons**: Lucide React
 * **Math & Geometry**: Haversine Spherical Distance, Nearest-Neighbor TSP + 2-Opt Optimization

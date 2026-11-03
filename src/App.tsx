@@ -9,11 +9,28 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 import { NotificationToast } from './components/common/NotificationToast';
 import { InvoiceModal } from './components/common/InvoiceModal';
 import { CartDrawer } from './components/customer/CartDrawer';
+import { AuthPage } from './components/auth/AuthPage';
+import { LoadingScreen } from './components/auth/LoadingScreen';
 import { Compass, ShieldCheck, Heart, Terminal } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
-  const { currentUser } = useApp();
+  const { currentUser, firebaseUser, authLoading, isGuestDemo, loginDemoRole } = useApp();
   const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // 1. Maintain login session automatically with loading screen
+  if (authLoading) {
+    return <LoadingScreen />;
+  }
+
+  // 2. If user is null and not in demo mode, show AuthPage
+  if (!firebaseUser && !isGuestDemo) {
+    return (
+      <AuthPage
+        onDemoLogin={role => loginDemoRole(role)}
+        onSuccess={() => {}}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-charcoal-950 text-slate-100 flex flex-col selection:bg-gold-500/30 selection:text-gold-200">

@@ -102,7 +102,8 @@
 }
 
 .leaflet-tile {
-  filter: brightness(0.65) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7) !important;
+  /* Crisp native dark rendering for MapTiler Dataviz Dark & CartoDB Dark */
+  opacity: 0.95;
 }
 
 .leaflet-popup-content-wrapper {

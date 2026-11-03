@@ -1,0 +1,1082 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This production security rules file protects the OmniRoute Enterprise
+// Smart Delivery & Fleet Logistics Platform.
+//
+// Assumed Data Models:
+//
+// Collection: users
+// Document ID: {userId} (Firebase Auth UID)
+// Fields:
+//   - id: string (optional, matches UID, max 128 chars)
+//   - name: string (required, 1-100 chars)
+//   - email: string (required, valid email, max 150 chars, immutable)
+//   - role: string (required, ['customer', 'restaurant_owner', 'vendor', 'delivery_partner', 'manager', 'admin'])
+//   - phone: string (optional, max 30 chars)
+//   - avatar: string (optional, max 500 chars)
+//   - businessId: string (optional, max 100 chars)
+//   - createdAt: timestamp or ISO string (optional, immutable)
+//   - updatedAt: timestamp or ISO string (optional)
+//
+// Collection: routes
+// Document ID: {routeId}
+// Fields:
+//   - id: string (optional, max 128 chars)
+//   - ownerId: string (required, UID of creator/vendor/manager, immutable)
+//   - name: string (optional, max 100 chars)
+//   - origin: map {lat, lng} (optional, valid coordinates)
+//   - stops: list of maps (required, max 50 stops)
+//   - status: string (required, ['draft', 'assigned', 'in_progress', 'completed', 'cancelled'])
+//   - totalDistanceKm: number (required, >= 0, <= 10000)
+//   - estimatedTimeMin: number (required, >= 0, <= 10000)
+//   - assignedDriverId: string (optional, max 128 chars)
+//   - deliveryPartnerId: string (optional, max 128 chars)
+//   - currentStopIndex: number (optional, >= 0)
+//   - completedStops: number (optional, >= 0)
+//   - createdAt: timestamp or ISO string (optional, immutable)
+//   - updatedAt: timestamp or ISO string (optional)
+//
+// Collection: businesses
+// Document ID: {businessId}
+// Fields:
+//   - id: string (optional, max 128 chars)
+//   - name: string (required, 1-150 chars)
+//   - type: string (required, ['restaurant', 'street_vendor', 'bakery', 'chai_stall', 'grocery'])
+//   - tagline: string (optional, max 200 chars)
+//   - description: string (optional, max 1000 chars)
+//   - rating: number (required, 0.0 - 5.0)
+//   - reviewCount: number (optional, >= 0)
+//   - address: string (required, 1-300 chars)
+//   - coordinates: map {lat, lng} (required, valid coordinates)
+//   - banner: string (optional, valid URL, max 500 chars)
+//   - logo: string (optional, valid URL, max 500 chars)
+//   - cuisine: list of strings (optional, max 20 items)
+//   - openingHours: string (optional, max 50 chars)
+//   - closingHours: string (optional, max 50 chars)
+//   - minOrder: number (optional, >= 0, <= 100000)
+//   - deliveryTimeMin: number (optional, >= 0, <= 600)
+//   - taxRate: number (optional, 0.0 - 1.0)
+//   - isOpen: bool (required)
+//   - isFeatured: bool (optional)
+//   - ownerId: string (optional, merchant UID, immutable)
+//   - createdAt: timestamp or ISO string (optional, immutable)
+//   - updatedAt: timestamp or ISO string (optional)
+//
+// Subcollection: businesses/{businessId}/menuItems (and /menuItems)
+// Document ID: {itemId}
+// Fields:
+//   - id: string (optional, max 128 chars)
+//   - businessId: string (required, max 128 chars, immutable)
+//   - name: string (required, 1-100 chars)
+//   - description: string (optional, max 500 chars)
+//   - price: number (required, >= 0, <= 100000)
+//   - originalPrice: number (optional, >= 0, <= 100000)
+//   - category: string (optional, max 100 chars)
+//   - image: string (optional, valid URL, max 500 chars)
+//   - isVeg: bool (required)
+//   - isAvailable: bool (required)
+//   - preparationTimeMin: number (optional, >= 0, <= 240)
+//   - calories: number (optional, >= 0, <= 10000)
+//   - tags: list of strings (optional, max 20 items)
+//   - createdAt: timestamp or ISO string (optional, immutable)
+//   - updatedAt: timestamp or ISO string (optional)
+//
+// Collection: orders
+// Document ID: {orderId}
+// Fields:
+//   - id: string (optional, max 128 chars)
+//   - orderNumber: string (required, max 50 chars, immutable)
+//   - customerId: string (required, max 128 chars, immutable)
+//   - customerName: string (optional, max 100 chars)
+//   - customerPhone: string (optional, max 30 chars)
+//   - deliveryAddress: string (optional, max 300 chars)
+//   - destinationCoords: map {lat, lng} (optional, valid coordinates)
+//   - businessId: string (required, max 128 chars, immutable)
+//   - businessName: string (optional, max 150 chars)
+//   - businessType: string (optional, valid business type)
+//   - businessOwnerId: string (optional, max 128 chars)
+//   - businessCoords: map {lat, lng} (optional, valid coordinates)
+//   - items: list (required, 1-50 items)
+//   - subtotal: number (required, >= 0, <= 1000000)
+//   - tax: number (required, >= 0, <= 1000000)
+//   - deliveryFee: number (required, >= 0, <= 1000000)
+//   - discount: number (optional, >= 0, <= 1000000)
+//   - couponCode: string (optional, max 30 chars)
+//   - total: number (required, >= 0, <= 1000000)
+//   - paymentMethod: string (required, ['cash_on_delivery', 'online_card', 'online_upi'])
+//   - paymentStatus: string (required, ['paid', 'pending'])
+//   - status: string (required, ['pending', 'accepted', 'preparing', 'ready_for_pickup', 'assigned', 'picked_up', 'out_for_delivery', 'near_destination', 'delivered', 'cancelled'])
+//   - statusHistory: list of maps (optional, max 30 entries)
+//   - deliveryPartnerId: string (optional, max 128 chars)
+//   - deliveryPartnerName: string (optional, max 100 chars)
+//   - deliveryPartnerPhone: string (optional, max 30 chars)
+//   - batchId: string (optional, max 100 chars)
+//   - isScheduled: bool (optional)
+//   - scheduledTime: string or timestamp (optional)
+//   - preparationDeadline: string or timestamp (optional)
+//   - estimatedDeliveryTime: string or timestamp (optional)
+//   - proximityAlertTriggered: bool (optional)
+//   - deliveryConfirmationCode: string (required, 4-6 digit OTP, immutable by courier)
+//   - createdAt: timestamp or ISO string (optional, immutable)
+//   - updatedAt: timestamp or ISO string (optional)
+//
+// Collection: batches
+// Document ID: {batchId}
+// Fields:
+//   - id: string (optional, max 128 chars)
+//   - batchCode: string (required, max 50 chars, immutable)
+//   - vendorId: string (required, max 128 chars, immutable)
+//   - vendorOwnerId: string (optional, max 128 chars)
+//   - vendorName: string (optional, max 150 chars)
+//   - vendorCoords: map {lat, lng} (optional, valid coordinates)
+//   - orderIds: list of strings (required, 1-50 items)
+//   - deliveryPartnerId: string (optional, max 128 chars)
+//   - deliveryPartnerName: string (optional, max 100 chars)
+//   - status: string (required, ['draft', 'suggested', 'assigned', 'in_progress', 'completed', 'cancelled'])
+//   - totalDistanceKm: number (required, >= 0, <= 10000)
+//   - estimatedTimeMin: number (required, >= 0, <= 10000)
+//   - stops: list of maps (required, 1-50 stops)
+//   - currentStopIndex: number (optional, >= 0)
+//   - createdAt: timestamp or ISO string (optional, immutable)
+//   - updatedAt: timestamp or ISO string (optional)
+//
+// Collection: deliveryPartners (and drivers)
+// Document ID: {driverId} (Driver UID)
+// Fields:
+//   - id: string (optional, max 128 chars)
+//   - name: string (required, 1-100 chars)
+//   - phone: string (required, 1-30 chars)
+//   - vehicleType: string (required, ['Electric Scooter', 'Bike', 'Van'])
+//   - vehiclePlate: string (required, 1-30 chars)
+//   - photo: string (optional, valid URL, max 500 chars)
+//   - rating: number (optional, 0.0 - 5.0, immutable by driver)
+//   - isOnline: bool (required)
+//   - currentCoords: map {lat, lng, heading?} (required, valid coordinates)
+//   - activeOrderId: string (optional, max 128 chars)
+//   - activeBatchId: string (optional, max 128 chars)
+//   - totalDeliveries: number (optional, >= 0, immutable by driver)
+//   - earningsToday: number (optional, >= 0, immutable by driver)
+//   - createdAt: timestamp or ISO string (optional, immutable)
+//   - updatedAt: timestamp or ISO string (optional)
+//
+// Collection: invoices
+// Document ID: {invoiceId}
+// Fields:
+//   - id: string (optional, max 128 chars)
+//   - invoiceNumber: string (required, max 50 chars)
+//   - orderId: string (required, max 128 chars)
+//   - orderNumber: string (optional, max 50 chars)
+//   - subtotal: number (required, >= 0)
+//   - cgst: number (required, >= 0)
+//   - sgst: number (required, >= 0)
+//   - deliveryFee: number (required, >= 0)
+//   - discount: number (optional, >= 0)
+//   - grandTotal: number (required, >= 0)
+//   - paymentStatus: string (required, ['PAID', 'PENDING', 'paid', 'pending'])
+//
+// Collection: notifications
+// Document ID: {notificationId}
+// Fields:
+//   - id: string (optional, max 128 chars)
+//   - targetRole: string (optional, valid user role or 'all')
+//   - targetUserId: string (optional, max 128 chars)
+//   - orderId: string (optional, max 128 chars)
+//   - title: string (required, 1-150 chars)
+//   - message: string (required, 1-500 chars)
+//   - type: string (required, ['order', 'proximity', 'system', 'assignment', 'batch'])
+//   - read: bool (required)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Root Default Deny
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Core Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated with Firebase Auth
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user owns the document by UID
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if the authenticated user is a System Administrator
+    // Administrators possess top-level authorization across the platform and role delegation.
+    // Derived from trusted custom claims (token.role or token.admin) or protected user profile.
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'admin' ||
+        request.auth.token.admin == true ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        )
+      );
+    }
+
+    // Check if the authenticated user is a Logistics Operations Manager
+    // Managers supervise dispatching, vendor catalog sanity, and active order resolution.
+    // Managers CANNOT escalate their own role, appoint administrators, or tamper with system roles.
+    function isManager() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        request.auth.token.role == 'manager' ||
+        request.auth.token.manager == true ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager'
+        )
+      );
+    }
+
+    // Safely retrieve the current user's role
+    function getUserRole() {
+      return request.auth.token.role != null
+        ? request.auth.token.role
+        : (
+            exists(/databases/$(database)/documents/users/$(request.auth.uid))
+              ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+              : 'customer'
+          );
+    }
+
+    // Validate that required fields are present in the incoming resource
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate that only explicitly permitted fields are included (prevents schema pollution)
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Verify that immutable fields remain untouched during an update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate standard RFC 5322 email string
+    function isValidEmail(email) {
+      return email is string &&
+             email.size() <= 150 &&
+             email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    // Validate HTTP/HTTPS URL format
+    function isValidUrl(url) {
+      return url is string &&
+             url.size() <= 500 &&
+             (url.matches('^https://.*') || url.matches('^http://.*'));
+    }
+
+    // Validate geographic coordinate pair {lat, lng} within physical earth bounds
+    function isValidCoords(coords) {
+      return coords is map &&
+             coords.keys().hasAll(['lat', 'lng']) &&
+             coords.lat is number && coords.lat >= -90.0 && coords.lat <= 90.0 &&
+             coords.lng is number && coords.lng >= -180.0 && coords.lng <= 180.0;
+    }
+
+    // ===============================================================
+    // Domain Validators (Enforced on BOTH create and update)
+    // ===============================================================
+
+    // User Profile Schema Validator
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'role']) &&
+             data.keys().hasOnly([
+               'id', 'name', 'email', 'role', 'phone', 'avatar',
+               'businessId', 'createdAt', 'updatedAt'
+             ]) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['customer', 'restaurant_owner', 'vendor', 'delivery_partner', 'manager', 'admin'] &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             (!('avatar' in data) || (data.avatar is string && data.avatar.size() <= 500)) &&
+             (!('businessId' in data) || (data.businessId is string && data.businessId.size() <= 100)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    // Route Schema Validator
+    function isValidRoute(data) {
+      return data.keys().hasAll(['ownerId', 'status', 'stops', 'totalDistanceKm', 'estimatedTimeMin']) &&
+             data.keys().hasOnly([
+               'id', 'ownerId', 'name', 'origin', 'stops', 'status',
+               'totalDistanceKm', 'estimatedTimeMin', 'assignedDriverId',
+               'deliveryPartnerId', 'currentStopIndex', 'completedStops',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.ownerId is string && data.ownerId.size() > 0 && data.ownerId.size() <= 128 &&
+             data.status in ['draft', 'assigned', 'in_progress', 'completed', 'cancelled'] &&
+             data.stops is list && data.stops.size() <= 50 &&
+             data.totalDistanceKm is number && data.totalDistanceKm >= 0.0 && data.totalDistanceKm <= 10000.0 &&
+             data.estimatedTimeMin is number && data.estimatedTimeMin >= 0.0 && data.estimatedTimeMin <= 10000.0 &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('name' in data) || (data.name is string && data.name.size() <= 100)) &&
+             (!('origin' in data) || isValidCoords(data.origin)) &&
+             (!('assignedDriverId' in data) || (data.assignedDriverId is string && data.assignedDriverId.size() <= 128)) &&
+             (!('deliveryPartnerId' in data) || (data.deliveryPartnerId is string && data.deliveryPartnerId.size() <= 128)) &&
+             (!('currentStopIndex' in data) || (data.currentStopIndex is number && data.currentStopIndex >= 0)) &&
+             (!('completedStops' in data) || (data.completedStops is number && data.completedStops >= 0)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    // Business (Restaurant / Vendor) Schema Validator
+    function isValidBusiness(data) {
+      return data.keys().hasAll(['name', 'type', 'address', 'coordinates', 'rating', 'isOpen']) &&
+             data.keys().hasOnly([
+               'id', 'name', 'type', 'tagline', 'description', 'rating',
+               'reviewCount', 'address', 'coordinates', 'banner', 'logo',
+               'cuisine', 'openingHours', 'closingHours', 'minOrder',
+               'deliveryTimeMin', 'taxRate', 'isOpen', 'isFeatured',
+               'ownerId', 'createdAt', 'updatedAt'
+             ]) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
+             data.type in ['restaurant', 'street_vendor', 'bakery', 'chai_stall', 'grocery'] &&
+             data.address is string && data.address.size() > 0 && data.address.size() <= 300 &&
+             isValidCoords(data.coordinates) &&
+             data.rating is number && data.rating >= 0.0 && data.rating <= 5.0 &&
+             data.isOpen is bool &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('tagline' in data) || (data.tagline is string && data.tagline.size() <= 200)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('reviewCount' in data) || (data.reviewCount is number && data.reviewCount >= 0)) &&
+             (!('banner' in data) || isValidUrl(data.banner)) &&
+             (!('logo' in data) || isValidUrl(data.logo)) &&
+             (!('cuisine' in data) || (data.cuisine is list && data.cuisine.size() <= 20)) &&
+             (!('openingHours' in data) || (data.openingHours is string && data.openingHours.size() <= 50)) &&
+             (!('closingHours' in data) || (data.closingHours is string && data.closingHours.size() <= 50)) &&
+             (!('minOrder' in data) || (data.minOrder is number && data.minOrder >= 0 && data.minOrder <= 100000)) &&
+             (!('deliveryTimeMin' in data) || (data.deliveryTimeMin is number && data.deliveryTimeMin >= 0 && data.deliveryTimeMin <= 600)) &&
+             (!('taxRate' in data) || (data.taxRate is number && data.taxRate >= 0.0 && data.taxRate <= 1.0)) &&
+             (!('isFeatured' in data) || data.isFeatured is bool) &&
+             (!('ownerId' in data) || (data.ownerId is string && data.ownerId.size() <= 128)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    // Menu Item Schema Validator
+    function isValidMenuItem(data) {
+      return data.keys().hasAll(['businessId', 'name', 'price', 'isVeg', 'isAvailable']) &&
+             data.keys().hasOnly([
+               'id', 'businessId', 'name', 'description', 'price',
+               'originalPrice', 'category', 'image', 'isVeg', 'isAvailable',
+               'preparationTimeMin', 'calories', 'tags', 'createdAt', 'updatedAt'
+             ]) &&
+             data.businessId is string && data.businessId.size() > 0 && data.businessId.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.price is number && data.price >= 0.0 && data.price <= 100000.0 &&
+             data.isVeg is bool &&
+             data.isAvailable is bool &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
+             (!('originalPrice' in data) || (data.originalPrice is number && data.originalPrice >= 0.0 && data.originalPrice <= 100000.0)) &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 100)) &&
+             (!('image' in data) || isValidUrl(data.image)) &&
+             (!('preparationTimeMin' in data) || (data.preparationTimeMin is number && data.preparationTimeMin >= 0 && data.preparationTimeMin <= 240)) &&
+             (!('calories' in data) || (data.calories is number && data.calories >= 0 && data.calories <= 10000)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 20)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    // Order Schema Validator
+    function isValidOrder(data) {
+      return data.keys().hasAll([
+               'orderNumber', 'customerId', 'businessId', 'items',
+               'subtotal', 'tax', 'deliveryFee', 'total',
+               'paymentMethod', 'paymentStatus', 'status',
+               'deliveryConfirmationCode'
+             ]) &&
+             data.keys().hasOnly([
+               'id', 'orderNumber', 'customerId', 'customerName',
+               'customerPhone', 'deliveryAddress', 'destinationCoords',
+               'businessId', 'businessName', 'businessType', 'businessOwnerId',
+               'businessCoords', 'items', 'subtotal', 'tax', 'deliveryFee',
+               'discount', 'couponCode', 'total', 'paymentMethod',
+               'paymentStatus', 'status', 'statusHistory',
+               'deliveryPartnerId', 'deliveryPartnerName', 'deliveryPartnerPhone',
+               'batchId', 'isScheduled', 'scheduledTime', 'preparationDeadline',
+               'estimatedDeliveryTime', 'proximityAlertTriggered',
+               'deliveryConfirmationCode', 'createdAt', 'updatedAt'
+             ]) &&
+             data.orderNumber is string && data.orderNumber.size() > 0 && data.orderNumber.size() <= 50 &&
+             data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128 &&
+             data.businessId is string && data.businessId.size() > 0 && data.businessId.size() <= 128 &&
+             data.items is list && data.items.size() > 0 && data.items.size() <= 50 &&
+             data.subtotal is number && data.subtotal >= 0.0 && data.subtotal <= 1000000.0 &&
+             data.tax is number && data.tax >= 0.0 && data.tax <= 1000000.0 &&
+             data.deliveryFee is number && data.deliveryFee >= 0.0 && data.deliveryFee <= 1000000.0 &&
+             data.total is number && data.total >= 0.0 && data.total <= 1000000.0 &&
+             data.paymentMethod in ['cash_on_delivery', 'online_card', 'online_upi'] &&
+             data.paymentStatus in ['paid', 'pending'] &&
+             data.status in [
+               'pending', 'accepted', 'preparing', 'ready_for_pickup',
+               'assigned', 'picked_up', 'out_for_delivery', 'near_destination',
+               'delivered', 'cancelled'
+             ] &&
+             data.deliveryConfirmationCode is string &&
+             data.deliveryConfirmationCode.size() >= 4 &&
+             data.deliveryConfirmationCode.size() <= 6 &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('customerName' in data) || (data.customerName is string && data.customerName.size() <= 100)) &&
+             (!('customerPhone' in data) || (data.customerPhone is string && data.customerPhone.size() <= 30)) &&
+             (!('deliveryAddress' in data) || (data.deliveryAddress is string && data.deliveryAddress.size() <= 300)) &&
+             (!('destinationCoords' in data) || isValidCoords(data.destinationCoords)) &&
+             (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 150)) &&
+             (!('businessType' in data) || (data.businessType in ['restaurant', 'street_vendor', 'bakery', 'chai_stall', 'grocery'])) &&
+             (!('businessOwnerId' in data) || (data.businessOwnerId is string && data.businessOwnerId.size() <= 128)) &&
+             (!('businessCoords' in data) || isValidCoords(data.businessCoords)) &&
+             (!('discount' in data) || (data.discount is number && data.discount >= 0.0 && data.discount <= 1000000.0)) &&
+             (!('couponCode' in data) || (data.couponCode is string && data.couponCode.size() <= 30)) &&
+             (!('statusHistory' in data) || (data.statusHistory is list && data.statusHistory.size() <= 30)) &&
+             (!('deliveryPartnerId' in data) || (data.deliveryPartnerId is string && data.deliveryPartnerId.size() <= 128)) &&
+             (!('deliveryPartnerName' in data) || (data.deliveryPartnerName is string && data.deliveryPartnerName.size() <= 100)) &&
+             (!('deliveryPartnerPhone' in data) || (data.deliveryPartnerPhone is string && data.deliveryPartnerPhone.size() <= 30)) &&
+             (!('batchId' in data) || (data.batchId is string && data.batchId.size() <= 100)) &&
+             (!('isScheduled' in data) || data.isScheduled is bool) &&
+             (!('scheduledTime' in data) || (data.scheduledTime is string && data.scheduledTime.size() <= 50) || data.scheduledTime is timestamp) &&
+             (!('preparationDeadline' in data) || (data.preparationDeadline is string && data.preparationDeadline.size() <= 50) || data.preparationDeadline is timestamp) &&
+             (!('estimatedDeliveryTime' in data) || (data.estimatedDeliveryTime is string && data.estimatedDeliveryTime.size() <= 50) || data.estimatedDeliveryTime is timestamp) &&
+             (!('proximityAlertTriggered' in data) || data.proximityAlertTriggered is bool) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    // Delivery Batch Schema Validator (Multi-order TSP dynamic batching)
+    function isValidBatch(data) {
+      return data.keys().hasAll([
+               'batchCode', 'vendorId', 'status', 'orderIds',
+               'stops', 'totalDistanceKm', 'estimatedTimeMin'
+             ]) &&
+             data.keys().hasOnly([
+               'id', 'batchCode', 'vendorId', 'vendorOwnerId', 'vendorName',
+               'vendorCoords', 'orderIds', 'deliveryPartnerId',
+               'deliveryPartnerName', 'status', 'totalDistanceKm',
+               'estimatedTimeMin', 'stops', 'currentStopIndex',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.batchCode is string && data.batchCode.size() > 0 && data.batchCode.size() <= 50 &&
+             data.vendorId is string && data.vendorId.size() > 0 && data.vendorId.size() <= 128 &&
+             data.status in ['draft', 'suggested', 'assigned', 'in_progress', 'completed', 'cancelled'] &&
+             data.orderIds is list && data.orderIds.size() > 0 && data.orderIds.size() <= 50 &&
+             data.stops is list && data.stops.size() > 0 && data.stops.size() <= 50 &&
+             data.totalDistanceKm is number && data.totalDistanceKm >= 0.0 && data.totalDistanceKm <= 10000.0 &&
+             data.estimatedTimeMin is number && data.estimatedTimeMin >= 0.0 && data.estimatedTimeMin <= 10000.0 &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('vendorOwnerId' in data) || (data.vendorOwnerId is string && data.vendorOwnerId.size() <= 128)) &&
+             (!('vendorName' in data) || (data.vendorName is string && data.vendorName.size() <= 150)) &&
+             (!('vendorCoords' in data) || isValidCoords(data.vendorCoords)) &&
+             (!('deliveryPartnerId' in data) || (data.deliveryPartnerId is string && data.deliveryPartnerId.size() <= 128)) &&
+             (!('deliveryPartnerName' in data) || (data.deliveryPartnerName is string && data.deliveryPartnerName.size() <= 100)) &&
+             (!('currentStopIndex' in data) || (data.currentStopIndex is number && data.currentStopIndex >= 0)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    // Courier / Driver Telemetry Validator
+    function isValidDriver(data) {
+      return data.keys().hasAll([
+               'name', 'phone', 'vehicleType', 'vehiclePlate',
+               'isOnline', 'currentCoords'
+             ]) &&
+             data.keys().hasOnly([
+               'id', 'name', 'phone', 'vehicleType', 'vehiclePlate',
+               'photo', 'rating', 'isOnline', 'currentCoords',
+               'activeOrderId', 'activeBatchId', 'totalDeliveries',
+               'earningsToday', 'createdAt', 'updatedAt'
+             ]) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() > 0 && data.phone.size() <= 30 &&
+             data.vehicleType in ['Electric Scooter', 'Bike', 'Van'] &&
+             data.vehiclePlate is string && data.vehiclePlate.size() > 0 && data.vehiclePlate.size() <= 30 &&
+             data.isOnline is bool &&
+             isValidCoords(data.currentCoords) &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('photo' in data) || isValidUrl(data.photo)) &&
+             (!('rating' in data) || (data.rating is number && data.rating >= 0.0 && data.rating <= 5.0)) &&
+             (!('totalDeliveries' in data) || (data.totalDeliveries is number && data.totalDeliveries >= 0)) &&
+             (!('earningsToday' in data) || (data.earningsToday is number && data.earningsToday >= 0.0)) &&
+             (!('activeOrderId' in data) || (data.activeOrderId is string && data.activeOrderId.size() <= 128)) &&
+             (!('activeBatchId' in data) || (data.activeBatchId is string && data.activeBatchId.size() <= 128)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    // Tax Invoice Schema Validator
+    function isValidInvoice(data) {
+      return data.keys().hasAll([
+               'invoiceNumber', 'orderId', 'subtotal', 'cgst',
+               'sgst', 'deliveryFee', 'grandTotal', 'paymentStatus'
+             ]) &&
+             data.keys().hasOnly([
+               'id', 'invoiceNumber', 'orderId', 'orderNumber',
+               'issueDate', 'customer', 'vendor', 'items', 'subtotal',
+               'cgst', 'sgst', 'deliveryFee', 'discount', 'grandTotal',
+               'paymentMethod', 'paymentStatus', 'customerId', 'vendorId',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.invoiceNumber is string && data.invoiceNumber.size() > 0 && data.invoiceNumber.size() <= 50 &&
+             data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 128 &&
+             data.subtotal is number && data.subtotal >= 0.0 && data.subtotal <= 1000000.0 &&
+             data.cgst is number && data.cgst >= 0.0 && data.cgst <= 1000000.0 &&
+             data.sgst is number && data.sgst >= 0.0 && data.sgst <= 1000000.0 &&
+             data.deliveryFee is number && data.deliveryFee >= 0.0 && data.deliveryFee <= 1000000.0 &&
+             data.grandTotal is number && data.grandTotal >= 0.0 && data.grandTotal <= 1000000.0 &&
+             data.paymentStatus in ['PAID', 'PENDING', 'paid', 'pending'] &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('orderNumber' in data) || (data.orderNumber is string && data.orderNumber.size() <= 50)) &&
+             (!('issueDate' in data) || (data.issueDate is string && data.issueDate.size() <= 50) || data.issueDate is timestamp) &&
+             (!('customer' in data) || data.customer is map) &&
+             (!('vendor' in data) || data.vendor is map) &&
+             (!('items' in data) || (data.items is list && data.items.size() <= 50)) &&
+             (!('discount' in data) || (data.discount is number && data.discount >= 0.0)) &&
+             (!('paymentMethod' in data) || (data.paymentMethod is string && data.paymentMethod.size() <= 50)) &&
+             (!('customerId' in data) || (data.customerId is string && data.customerId.size() <= 128)) &&
+             (!('vendorId' in data) || (data.vendorId is string && data.vendorId.size() <= 128)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    // In-App Notification Schema Validator
+    function isValidNotification(data) {
+      return data.keys().hasAll(['title', 'message', 'type', 'read']) &&
+             data.keys().hasOnly([
+               'id', 'targetRole', 'targetUserId', 'orderId',
+               'title', 'message', 'type', 'timestamp', 'read', 'createdAt'
+             ]) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 150 &&
+             data.message is string && data.message.size() > 0 && data.message.size() <= 500 &&
+             data.type in ['order', 'proximity', 'system', 'assignment', 'batch'] &&
+             data.read is bool &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             (!('targetRole' in data) || (data.targetRole in ['all', 'customer', 'restaurant_owner', 'vendor', 'delivery_partner', 'manager', 'admin'])) &&
+             (!('targetUserId' in data) || (data.targetUserId is string && data.targetUserId.size() <= 128)) &&
+             (!('orderId' in data) || (data.orderId is string && data.orderId.size() <= 128)) &&
+             (!('timestamp' in data) || (data.timestamp is string && data.timestamp.size() <= 50) || data.timestamp is timestamp) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 50));
+    }
+
+
+    // ===============================================================
+    // Collection Security Rules
+    // ===============================================================
+
+    // ---------------------------------------------------------------
+    // 1. Users Collection
+    // ---------------------------------------------------------------
+    match /users/{userId} {
+      // PII Protection: Users can read only their own profile.
+      // Operations managers and admins can read profiles for support and dispute handling.
+      allow read: if isOwner(userId) || isManager();
+
+      // Account Creation & Self-Escalation Prevention:
+      // Users can only create their own user document matching their Auth UID.
+      // Unprivileged users CANNOT set privileged roles ('admin' or 'manager') on create.
+      allow create: if isAuthenticated() &&
+                    request.auth.uid == userId &&
+                    isValidUser(request.resource.data) &&
+                    (
+                      isAdmin() ||
+                      (request.resource.data.role in ['customer', 'restaurant_owner', 'vendor', 'delivery_partner'])
+                    );
+
+      // Profile Update & Privilege Escalation Lockdown:
+      // - Admins can update any user profile and reassign roles.
+      // - Normal users can update their profile, but CANNOT change their role or modify immutable fields (id, email).
+      // - Managers can update profile details for support, but CANNOT touch roles or admin accounts.
+      allow update: if isAuthenticated() &&
+                    isValidUser(request.resource.data) &&
+                    (
+                      isAdmin() ||
+                      (
+                        request.auth.uid == userId &&
+                        request.resource.data.role == resource.data.role &&
+                        areImmutableFieldsUnchanged(['id', 'email', 'role'])
+                      ) ||
+                      (
+                        isManager() &&
+                        resource.data.role != 'admin' &&
+                        request.resource.data.role == resource.data.role &&
+                        areImmutableFieldsUnchanged(['id', 'email', 'role'])
+                      )
+                    );
+
+      // Account Deletion: Restricted strictly to System Administrators to protect audit integrity.
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // 2. Logistics Routes Collection
+    // ---------------------------------------------------------------
+    match /routes/{routeId} {
+      // Read: Supervisors (managers/admins), route owner, or assigned courier.
+      allow read: if isManager() ||
+                  (resource.data.ownerId == request.auth.uid) ||
+                  (resource.data.assignedDriverId != null && resource.data.assignedDriverId == request.auth.uid) ||
+                  (resource.data.deliveryPartnerId != null && resource.data.deliveryPartnerId == request.auth.uid);
+
+      // Create: Supervisors or owner creating their own route.
+      allow create: if isAuthenticated() &&
+                    isValidRoute(request.resource.data) &&
+                    (isManager() || request.resource.data.ownerId == request.auth.uid);
+
+      // Update:
+      // - Managers and Admins can update routes.
+      // - Owner can update route parameters with immutable ownerId and createdAt.
+      // - Assigned courier can only update operational transit progress (status, stops, currentStopIndex, updatedAt).
+      allow update: if isAuthenticated() &&
+                    isValidRoute(request.resource.data) &&
+                    (
+                      isManager() ||
+                      (
+                        resource.data.ownerId == request.auth.uid &&
+                        areImmutableFieldsUnchanged(['id', 'ownerId', 'createdAt'])
+                      ) ||
+                      (
+                        (
+                          resource.data.assignedDriverId == request.auth.uid ||
+                          resource.data.deliveryPartnerId == request.auth.uid
+                        ) &&
+                        areImmutableFieldsUnchanged([
+                          'id', 'ownerId', 'assignedDriverId', 'deliveryPartnerId',
+                          'totalDistanceKm', 'estimatedTimeMin', 'createdAt'
+                        ]) &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                          'status', 'stops', 'currentStopIndex', 'completedStops', 'updatedAt'
+                        ])
+                      )
+                    );
+
+      // Delete: Supervisors or owner (if route is in draft/cancelled state).
+      allow delete: if isManager() ||
+                    (
+                      resource.data.ownerId == request.auth.uid &&
+                      resource.data.status in ['draft', 'cancelled']
+                    );
+    }
+
+    // ---------------------------------------------------------------
+    // 3. Businesses Collection (Restaurants & Vendors)
+    // ---------------------------------------------------------------
+    match /businesses/{businessId} {
+      // Public catalog: All authenticated users can browse businesses and operating hours.
+      allow read: if isAuthenticated();
+
+      // Create: Supervisors or merchant creating their own business.
+      allow create: if isAuthenticated() &&
+                    isValidBusiness(request.resource.data) &&
+                    (
+                      isManager() ||
+                      (
+                        request.resource.data.ownerId == request.auth.uid &&
+                        request.resource.data.type in ['restaurant', 'street_vendor', 'bakery', 'chai_stall', 'grocery']
+                      )
+                    );
+
+      // Update: Supervisors or business owner. Core identity and ownership cannot be hijacked.
+      allow update: if isAuthenticated() &&
+                    isValidBusiness(request.resource.data) &&
+                    (
+                      isManager() ||
+                      (
+                        resource.data.ownerId == request.auth.uid &&
+                        areImmutableFieldsUnchanged(['id', 'ownerId', 'createdAt'])
+                      )
+                    );
+
+      // Delete: Restricted to System Administrators to prevent accidental business removal.
+      allow delete: if isAdmin();
+
+      // Subcollection: Menu Items under Business
+      match /menuItems/{itemId} {
+        allow read: if isAuthenticated();
+
+        allow create: if isAuthenticated() &&
+                      isValidMenuItem(request.resource.data) &&
+                      request.resource.data.businessId == businessId &&
+                      (
+                        isManager() ||
+                        (
+                          exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+                          get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+                        )
+                      );
+
+        allow update: if isAuthenticated() &&
+                      isValidMenuItem(request.resource.data) &&
+                      request.resource.data.businessId == businessId &&
+                      areImmutableFieldsUnchanged(['id', 'businessId', 'createdAt']) &&
+                      (
+                        isManager() ||
+                        (
+                          exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+                          get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+                        )
+                      );
+
+        allow delete: if isManager() ||
+                      (
+                        exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+                        get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+                      );
+      }
+    }
+
+    // Top-Level Menu Items Collection (Direct query support)
+    match /menuItems/{itemId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated() &&
+                    isValidMenuItem(request.resource.data) &&
+                    (
+                      isManager() ||
+                      (
+                        exists(/databases/$(database)/documents/businesses/$(request.resource.data.businessId)) &&
+                        get(/databases/$(database)/documents/businesses/$(request.resource.data.businessId)).data.ownerId == request.auth.uid
+                      )
+                    );
+
+      allow update: if isAuthenticated() &&
+                    isValidMenuItem(request.resource.data) &&
+                    areImmutableFieldsUnchanged(['id', 'businessId', 'createdAt']) &&
+                    (
+                      isManager() ||
+                      (
+                        exists(/databases/$(database)/documents/businesses/$(resource.data.businessId)) &&
+                        get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerId == request.auth.uid
+                      )
+                    );
+
+      allow delete: if isManager() ||
+                    (
+                      exists(/databases/$(database)/documents/businesses/$(resource.data.businessId)) &&
+                      get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerId == request.auth.uid
+                    );
+    }
+
+    // ---------------------------------------------------------------
+    // 4. Orders Collection (Food Delivery & Logistics Lifecycle)
+    // ---------------------------------------------------------------
+    match /orders/{orderId} {
+      // Read: Customer, assigned courier, merchant owner, or operations supervisor.
+      allow read: if isManager() ||
+                  (resource.data.customerId == request.auth.uid) ||
+                  (resource.data.deliveryPartnerId != null && resource.data.deliveryPartnerId == request.auth.uid) ||
+                  (resource.data.businessOwnerId != null && resource.data.businessOwnerId == request.auth.uid) ||
+                  (
+                    exists(/databases/$(database)/documents/businesses/$(resource.data.businessId)) &&
+                    get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerId == request.auth.uid
+                  );
+
+      // Create: Authenticated customer placing an order for themselves (or manager dispatching).
+      // Customer orders start strictly with status 'pending'.
+      allow create: if isAuthenticated() &&
+                    isValidOrder(request.resource.data) &&
+                    (
+                      isManager() ||
+                      (
+                        request.resource.data.customerId == request.auth.uid &&
+                        request.resource.data.status == 'pending'
+                      )
+                    );
+
+      // Update: Role-segregated workflow transitions:
+      // 1. Manager/Admin supervisor override
+      // 2. Customer can only cancel their pending order (cannot alter billing/items)
+      // 3. Merchant (Restaurant/Vendor) advances kitchen/dispatch stages
+      // 4. Delivery Partner accepts, updates transit, triggers proximity alerts, and completes delivery via OTP
+      allow update: if isAuthenticated() &&
+                    isValidOrder(request.resource.data) &&
+                    (
+                      // 1. Supervisor override
+                      isManager() ||
+
+                      // 2. Customer cancellation (only while pending, financial totals locked)
+                      (
+                        resource.data.customerId == request.auth.uid &&
+                        areImmutableFieldsUnchanged([
+                          'id', 'orderNumber', 'customerId', 'businessId', 'items',
+                          'subtotal', 'tax', 'deliveryFee', 'discount', 'total',
+                          'paymentMethod', 'paymentStatus', 'deliveryConfirmationCode',
+                          'createdAt'
+                        ]) &&
+                        resource.data.status == 'pending' &&
+                        request.resource.data.status == 'cancelled'
+                      ) ||
+
+                      // 3. Merchant order processing
+                      (
+                        (
+                          resource.data.businessOwnerId == request.auth.uid ||
+                          (
+                            exists(/databases/$(database)/documents/businesses/$(resource.data.businessId)) &&
+                            get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerId == request.auth.uid
+                          )
+                        ) &&
+                        areImmutableFieldsUnchanged([
+                          'id', 'orderNumber', 'customerId', 'businessId', 'items',
+                          'subtotal', 'tax', 'deliveryFee', 'discount', 'total',
+                          'paymentMethod', 'paymentStatus', 'deliveryConfirmationCode',
+                          'createdAt'
+                        ]) &&
+                        (
+                          (resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'cancelled']) ||
+                          (resource.data.status == 'accepted' && request.resource.data.status in ['preparing', 'cancelled']) ||
+                          (resource.data.status == 'preparing' && request.resource.data.status == 'ready_for_pickup')
+                        )
+                      ) ||
+
+                      // 4. Delivery Partner assignment, transit updates, and OTP delivery completion
+                      (
+                        (
+                          resource.data.deliveryPartnerId == request.auth.uid ||
+                          (
+                            resource.data.deliveryPartnerId == null &&
+                            resource.data.status == 'ready_for_pickup' &&
+                            request.resource.data.deliveryPartnerId == request.auth.uid
+                          )
+                        ) &&
+                        areImmutableFieldsUnchanged([
+                          'id', 'orderNumber', 'customerId', 'businessId', 'items',
+                          'subtotal', 'tax', 'deliveryFee', 'discount', 'total',
+                          'paymentMethod', 'paymentStatus', 'deliveryConfirmationCode',
+                          'createdAt'
+                        ]) &&
+                        (
+                          // Claim unassigned order
+                          (resource.data.status == 'ready_for_pickup' && request.resource.data.status in ['ready_for_pickup', 'assigned']) ||
+                          // Picked up from merchant
+                          (resource.data.status == 'assigned' && request.resource.data.status == 'picked_up') ||
+                          // Out for delivery
+                          (resource.data.status == 'picked_up' && request.resource.data.status == 'out_for_delivery') ||
+                          // Near destination (within 1-KM geofence)
+                          (resource.data.status == 'out_for_delivery' && request.resource.data.status == 'near_destination') ||
+                          // Proximity alert flag update
+                          (
+                            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['proximityAlertTriggered', 'updatedAt', 'statusHistory']) &&
+                            request.resource.data.proximityAlertTriggered == true
+                          ) ||
+                          // Verified delivery: MUST provide matching 4-digit confirmation OTP
+                          (
+                            request.resource.data.status == 'delivered' &&
+                            resource.data.status in ['out_for_delivery', 'near_destination'] &&
+                            request.resource.data.deliveryConfirmationCode == resource.data.deliveryConfirmationCode
+                          )
+                        )
+                      )
+                    );
+
+      // Delete: Restricted to System Administrators to maintain auditable order records.
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // 5. Batches Collection (Multi-Order Dynamic TSP Routing)
+    // ---------------------------------------------------------------
+    match /batches/{batchId} {
+      // Read: Supervisors, vendor owner, or assigned courier.
+      allow read: if isManager() ||
+                  (resource.data.vendorId == request.auth.uid) ||
+                  (resource.data.vendorOwnerId != null && resource.data.vendorOwnerId == request.auth.uid) ||
+                  (
+                    exists(/databases/$(database)/documents/businesses/$(resource.data.vendorId)) &&
+                    get(/databases/$(database)/documents/businesses/$(resource.data.vendorId)).data.ownerId == request.auth.uid
+                  ) ||
+                  (resource.data.deliveryPartnerId != null && resource.data.deliveryPartnerId == request.auth.uid);
+
+      // Create: Supervisors or vendor creating a batch for their own establishment.
+      allow create: if isAuthenticated() &&
+                    isValidBatch(request.resource.data) &&
+                    (
+                      isManager() ||
+                      request.resource.data.vendorId == request.auth.uid ||
+                      (
+                        exists(/databases/$(database)/documents/businesses/$(request.resource.data.vendorId)) &&
+                        get(/databases/$(database)/documents/businesses/$(request.resource.data.vendorId)).data.ownerId == request.auth.uid
+                      )
+                    );
+
+      // Update:
+      // - Supervisors can modify batches.
+      // - Vendor owner can re-sequence, assign couriers, or update batch details.
+      // - Assigned courier can advance stops (currentStopIndex, stops status, status in_progress/completed).
+      allow update: if isAuthenticated() &&
+                    isValidBatch(request.resource.data) &&
+                    (
+                      isManager() ||
+                      (
+                        (
+                          resource.data.vendorId == request.auth.uid ||
+                          resource.data.vendorOwnerId == request.auth.uid ||
+                          (
+                            exists(/databases/$(database)/documents/businesses/$(resource.data.vendorId)) &&
+                            get(/databases/$(database)/documents/businesses/$(resource.data.vendorId)).data.ownerId == request.auth.uid
+                          )
+                        ) &&
+                        areImmutableFieldsUnchanged(['id', 'batchCode', 'vendorId', 'createdAt'])
+                      ) ||
+                      (
+                        resource.data.deliveryPartnerId == request.auth.uid &&
+                        areImmutableFieldsUnchanged([
+                          'id', 'batchCode', 'vendorId', 'deliveryPartnerId',
+                          'totalDistanceKm', 'estimatedTimeMin', 'createdAt'
+                        ]) &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                          'status', 'stops', 'currentStopIndex', 'updatedAt'
+                        ])
+                      )
+                    );
+
+      // Delete: Supervisors or vendor owner (only when draft, suggested, or cancelled).
+      allow delete: if isManager() ||
+                    (
+                      (
+                        resource.data.vendorId == request.auth.uid ||
+                        resource.data.vendorOwnerId == request.auth.uid ||
+                        (
+                          exists(/databases/$(database)/documents/businesses/$(resource.data.vendorId)) &&
+                          get(/databases/$(database)/documents/businesses/$(resource.data.vendorId)).data.ownerId == request.auth.uid
+                        )
+                      ) &&
+                      resource.data.status in ['draft', 'suggested', 'cancelled']
+                    );
+    }
+
+    // ---------------------------------------------------------------
+    // 6. Delivery Partners / Drivers Telemetry Collection
+    // ---------------------------------------------------------------
+    match /deliveryPartners/{driverId} {
+      // Read: Authenticated users can view driver location & vehicle details for live GPS tracking.
+      allow read: if isAuthenticated();
+
+      // Create: Supervisors or registered driver matching their Auth UID.
+      allow create: if isAuthenticated() &&
+                    isValidDriver(request.resource.data) &&
+                    (isManager() || request.auth.uid == driverId);
+
+      // Update:
+      // - Supervisors can manage driver records.
+      // - Drivers can update their GPS coordinates, online state, and active delivery IDs,
+      //   but CANNOT tamper with rating, total deliveries count, or earnings.
+      allow update: if isAuthenticated() &&
+                    isValidDriver(request.resource.data) &&
+                    (
+                      isManager() ||
+                      (
+                        request.auth.uid == driverId &&
+                        areImmutableFieldsUnchanged([
+                          'id', 'rating', 'totalDeliveries', 'earningsToday', 'createdAt'
+                        ])
+                      )
+                    );
+
+      // Delete: Restricted to System Administrators.
+      allow delete: if isAdmin();
+    }
+
+    // Driver collection alias (support for either collection name)
+    match /drivers/{driverId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated() &&
+                    isValidDriver(request.resource.data) &&
+                    (isManager() || request.auth.uid == driverId);
+
+      allow update: if isAuthenticated() &&
+                    isValidDriver(request.resource.data) &&
+                    (
+                      isManager() ||
+                      (
+                        request.auth.uid == driverId &&
+                        areImmutableFieldsUnchanged([
+                          'id', 'rating', 'totalDeliveries', 'earningsToday', 'createdAt'
+                        ])
+                      )
+                    );
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // 7. Invoices Collection (Printable Tax & Accounting Records)
+    // ---------------------------------------------------------------
+    match /invoices/{invoiceId} {
+      // Read: Customer, merchant owner, or operations supervisor.
+      allow read: if isManager() ||
+                  (resource.data.customerId != null && resource.data.customerId == request.auth.uid) ||
+                  (resource.data.vendorId != null && resource.data.vendorId == request.auth.uid);
+
+      // Create: Supervisors, system, or vendor generating invoice for their order.
+      allow create: if isAuthenticated() &&
+                    isValidInvoice(request.resource.data) &&
+                    (
+                      isManager() ||
+                      (request.resource.data.vendorId != null && request.resource.data.vendorId == request.auth.uid)
+                    );
+
+      // Update: Invoices are legal financial documents; non-admins cannot modify invoices.
+      allow update: if isAdmin();
+
+      // Delete: Strictly disallowed (maintains permanent tax audit compliance).
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // 8. Notifications Collection
+    // ---------------------------------------------------------------
+    match /notifications/{notificationId} {
+      // Read: Targeted user, broad role broadcasts, or supervisors.
+      allow read: if isAuthenticated() && (
+        isManager() ||
+        (resource.data.targetUserId != null && resource.data.targetUserId == request.auth.uid) ||
+        (resource.data.targetRole == 'all') ||
+        (resource.data.targetRole == getUserRole())
+      );
+
+      // Create: System, supervisor, or participants generating delivery alerts.
+      allow create: if isAuthenticated() &&
+                    isValidNotification(request.resource.data) &&
+                    (
+                      isManager() ||
+                      request.resource.data.targetUserId == request.auth.uid ||
+                      request.resource.data.type in ['order', 'proximity', 'assignment']
+                    );
+
+      // Update: Targeted user can toggle the 'read' flag; supervisors can update full alert.
+      allow update: if isAuthenticated() &&
+                    isValidNotification(request.resource.data) &&
+                    (
+                      isManager() ||
+                      (
+                        resource.data.targetUserId == request.auth.uid &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) &&
+                        request.resource.data.read is bool
+                      )
+                    );
+
+      // Delete: Targeted user or supervisor.
+      allow delete: if isManager() || (resource.data.targetUserId == request.auth.uid);
+    }
+
+  }
+}
