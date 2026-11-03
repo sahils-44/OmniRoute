@@ -1,9 +1,11 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Bell, Navigation, X, ShieldCheck } from 'lucide-react';
 
 export const NotificationToast: React.FC = () => {
-  const { activeProximityAlert, dismissProximityAlert, switchRole } = useApp();
+  const { activeProximityAlert, dismissProximityAlert } = useApp();
+  const navigate = useNavigate();
 
   if (!activeProximityAlert) return null;
 
@@ -58,8 +60,8 @@ export const NotificationToast: React.FC = () => {
             <div className="mt-3 flex items-center space-x-2">
               <button
                 onClick={() => {
-                  switchRole('customer');
                   dismissProximityAlert();
+                  navigate('/customer/tracking');
                 }}
                 className="flex-1 py-1.5 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-charcoal-950 text-xs font-bold transition-all shadow-emerald-glow text-center"
               >

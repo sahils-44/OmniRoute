@@ -16,8 +16,8 @@ import {
   UtensilsCrossed,
   Bike,
   ShieldAlert,
-  Check,
   LogOut,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -30,7 +30,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
     firebaseUser,
     logoutUser,
     isGuestDemo,
-    switchRole,
     cart,
     notifications,
     markNotificationRead,
@@ -48,27 +47,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
   const cartTotalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const rolePaths: Record<string, string> = {
-    customer: '/customer/dashboard',
-    restaurant_owner: '/hotel/dashboard',
-    hotel_owner: '/hotel/dashboard',
-    vendor: '/vendor/dashboard',
-    delivery_partner: '/delivery/dashboard',
-    admin: '/admin/dashboard',
-  };
-
-  const handleRoleSelect = (roleKey: UserRole) => {
-    switchRole(roleKey);
-    const targetPath = rolePaths[roleKey] || '/customer/dashboard';
-    navigate(targetPath);
-  };
-
   const roleLabels: Record<UserRole, { label: string; icon: React.ReactNode; color: string }> = {
     customer: { label: 'Customer', icon: <ShoppingBag className="w-3.5 h-3.5" />, color: 'text-cyan-400 border-cyan-500/40 bg-cyan-500/10' },
     restaurant_owner: { label: 'Hotel Owner', icon: <UtensilsCrossed className="w-3.5 h-3.5" />, color: 'text-gold-400 border-gold-500/40 bg-gold-500/10' },
+    hotel_owner: { label: 'Hotel Owner', icon: <UtensilsCrossed className="w-3.5 h-3.5" />, color: 'text-gold-400 border-gold-500/40 bg-gold-500/10' },
     vendor: { label: 'Local Vendor (Chai)', icon: <Store className="w-3.5 h-3.5" />, color: 'text-electric-orange border-orange-500/40 bg-orange-500/10' },
     delivery_partner: { label: 'Delivery Partner', icon: <Bike className="w-3.5 h-3.5" />, color: 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10' },
     admin: { label: 'Administrator', icon: <ShieldAlert className="w-3.5 h-3.5" />, color: 'text-purple-400 border-purple-500/40 bg-purple-500/10' },
+  };
+
+  const currentRoleInfo = roleLabels[currentUser.role] || {
+    label: currentUser.role,
+    icon: <UserIcon className="w-3.5 h-3.5" />,
+    color: 'text-gold-400 border-gold-500/40 bg-gold-500/10',
   };
 
   const handleSpeedCycle = () => {
@@ -80,7 +71,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
   return (
     <header className="sticky top-0 z-50 w-full glass-panel border-b border-white/10 px-4 lg:px-8 py-3">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
-        {/* Brand Logo */}
+        {/* Brand Logo & Active Workspace Title */}
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-gold-600 via-gold-400 to-amber-200 p-0.5 shadow-gold-glow flex items-center justify-center">
             <div className="w-full h-full bg-charcoal-950 rounded-[10px] flex items-center justify-center">
@@ -100,28 +91,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
               Smart Multi-Vendor Logistics & GPS Grid
             </p>
           </div>
-        </div>
-
-        {/* Central Role Selector Switcher */}
-        <div className="hidden md:flex items-center space-x-1 p-1 rounded-xl bg-charcoal-900/90 border border-white/10 backdrop-blur-md">
-          {(Object.keys(roleLabels) as UserRole[]).map(roleKey => {
-            const role = roleLabels[roleKey];
-            const isActive = currentUser.role === roleKey;
-            return (
-              <button
-                key={roleKey}
-                onClick={() => handleRoleSelect(roleKey)}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  isActive
-                    ? `${role.color} border shadow-sm font-bold`
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {role.icon}
-                <span>{role.label}</span>
-              </button>
-            );
-          })}
         </div>
 
         {/* Right Action Tools: Simulation Control, Cart, Notifications & Profile */}
@@ -184,52 +153,58 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 mt-3 w-80 sm:w-96 rounded-2xl glass-panel-gold border border-gold-500/30 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                  <div className="flex items-center space-x-1.5">
-                    <Sparkles className="w-4 h-4 text-gold-400" />
-                    <span className="font-bold text-sm text-white">Live Alerts Grid</span>
-                  </div>
-                  {notifications.length > 0 && (
-                    <button
-                      onClick={clearAllNotifications}
-                      className="text-[11px] text-slate-400 hover:text-white transition-colors"
-                    >
-                      Clear All
-                    </button>
-                  )}
-                </div>
-
-                <div className="mt-3 max-h-72 overflow-y-auto space-y-2">
-                  {notifications.length === 0 ? (
-                    <p className="text-center py-6 text-xs text-slate-400">
-                      No notifications at this moment
-                    </p>
-                  ) : (
-                    notifications.map(n => (
-                      <div
-                        key={n.id}
-                        onClick={() => markNotificationRead(n.id)}
-                        className={`p-3 rounded-xl border text-xs transition-all cursor-pointer ${
-                          n.read
-                            ? 'bg-charcoal-900/50 border-white/5 opacity-70'
-                            : 'bg-charcoal-850 border-gold-500/30'
-                        }`}
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowNotifications(false)}
+                />
+                <div className="absolute right-0 mt-3 w-80 sm:w-96 rounded-2xl glass-panel-gold border border-gold-500/30 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <div className="flex items-center space-x-1.5">
+                      <Sparkles className="w-4 h-4 text-gold-400" />
+                      <span className="font-bold text-sm text-white">Live Alerts Grid</span>
+                    </div>
+                    {notifications.length > 0 && (
+                      <button
+                        onClick={clearAllNotifications}
+                        className="text-[11px] text-slate-400 hover:text-white transition-colors"
                       >
-                        <div className="flex items-start justify-between">
-                          <span className="font-bold text-slate-200">{n.title}</span>
-                          <span className="text-[10px] font-mono text-slate-400">{n.timestamp}</span>
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-3 max-h-72 overflow-y-auto space-y-2">
+                    {notifications.length === 0 ? (
+                      <p className="text-center py-6 text-xs text-slate-400">
+                        No notifications at this moment
+                      </p>
+                    ) : (
+                      notifications.map(n => (
+                        <div
+                          key={n.id}
+                          onClick={() => markNotificationRead(n.id)}
+                          className={`p-3 rounded-xl border text-xs transition-all cursor-pointer ${
+                            n.read
+                              ? 'bg-charcoal-900/50 border-white/5 opacity-70'
+                              : 'bg-charcoal-850 border-gold-500/30'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <span className="font-bold text-slate-200">{n.title}</span>
+                            <span className="text-[10px] font-mono text-slate-400">{n.timestamp}</span>
+                          </div>
+                          <p className="mt-1 text-slate-300 leading-snug">{n.message}</p>
                         </div>
-                        <p className="mt-1 text-slate-300 leading-snug">{n.message}</p>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
 
-          {/* User Profile / Mobile Role Switcher */}
+          {/* User Profile Dropdown (Dedicated to Current Account Only) */}
           <div className="relative">
             <button
               onClick={() => setShowRoleMenu(prev => !prev)}
@@ -247,84 +222,64 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
             </button>
 
             {showRoleMenu && (
-              <div className="absolute right-0 mt-3 w-56 rounded-2xl glass-panel border border-white/15 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2">
-                <div className="px-3 py-2 border-b border-white/10">
-                  <p className="text-xs font-bold text-white truncate">{currentUser.name}</p>
-                  <p className="text-[10px] text-gold-400 capitalize">{currentUser.role.replace('_', ' ')}</p>
-                  <p className="text-[10px] text-slate-400 font-mono truncate mt-0.5">
-                    {firebaseUser?.email || (isGuestDemo ? 'Demo Mode Active' : currentUser.email)}
-                  </p>
-                </div>
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowRoleMenu(false)}
+                />
+                <div className="absolute right-0 mt-3 w-64 rounded-2xl glass-panel-gold border border-white/15 shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2 space-y-3">
+                  {/* User Account Info */}
+                  <div className="p-2.5 rounded-xl bg-charcoal-900/90 border border-white/10 space-y-1.5">
+                    <div className="flex items-center space-x-2.5">
+                      <img
+                        src={currentUser.avatar}
+                        alt={currentUser.name}
+                        className="w-9 h-9 rounded-xl object-cover border border-gold-500/40"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-white truncate">{currentUser.name}</p>
+                        <p className="text-[10px] text-slate-400 font-mono truncate">
+                          {firebaseUser?.email || (isGuestDemo ? 'Demo Mode Active' : currentUser.email)}
+                        </p>
+                      </div>
+                    </div>
 
-                <div className="mt-1 py-1">
-                  <p className="px-3 py-1 text-[10px] uppercase font-mono text-slate-500">
-                    Switch Workspace Role
-                  </p>
-                  {(Object.keys(roleLabels) as UserRole[]).map(roleKey => {
-                    const r = roleLabels[roleKey];
-                    const isCur = currentUser.role === roleKey;
-                    return (
-                      <button
-                        key={roleKey}
-                        onClick={() => {
-                          handleRoleSelect(roleKey);
-                          setShowRoleMenu(false);
-                        }}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${
-                          isCur
-                            ? 'bg-gold-500/20 text-gold-300 font-bold'
-                            : 'text-slate-300 hover:bg-white/5 hover:text-white'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-2">
-                          {r.icon}
-                          <span>{r.label}</span>
-                        </div>
-                        {isCur && <Check className="w-3.5 h-3.5 text-gold-400" />}
-                      </button>
-                    );
-                  })}
-                </div>
+                    <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400 font-medium">Role:</span>
+                      <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] flex items-center space-x-1 ${currentRoleInfo.color}`}>
+                        {currentRoleInfo.icon}
+                        <span>{currentRoleInfo.label}</span>
+                      </span>
+                    </div>
 
-                <div className="pt-1 mt-1 border-t border-white/10">
-                  <button
-                    onClick={async () => {
-                      setShowRoleMenu(false);
-                      await logoutUser();
-                      navigate('/login');
-                    }}
-                    className="w-full flex items-center space-x-2 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Sign Out</span>
-                  </button>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400 font-medium">Status:</span>
+                      <span className="inline-flex items-center space-x-1 text-emerald-400 font-bold text-[10px]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span>Active Account</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Sign Out Action */}
+                  <div className="pt-1 border-t border-white/10">
+                    <button
+                      onClick={async () => {
+                        setShowRoleMenu(false);
+                        await logoutUser();
+                        navigate('/login');
+                      }}
+                      className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 text-xs font-bold transition-all shadow-sm"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
-      </div>
-
-      {/* Mobile Horizontal Role Router Bar */}
-      <div className="md:hidden mt-2 pt-2 border-t border-white/5 flex items-center space-x-1 overflow-x-auto no-scrollbar pb-0.5">
-        {(Object.keys(roleLabels) as UserRole[]).map(roleKey => {
-          const role = roleLabels[roleKey];
-          const isActive = currentUser.role === roleKey;
-          return (
-            <button
-              key={roleKey}
-              onClick={() => handleRoleSelect(roleKey)}
-              className={`flex-shrink-0 flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
-                isActive
-                  ? `${role.color} border shadow-sm font-bold`
-                  : 'text-slate-400 hover:text-white bg-charcoal-900/60'
-              }`}
-            >
-              {role.icon}
-              <span>{role.label}</span>
-            </button>
-          );
-        })}
       </div>
     </header>
   );
