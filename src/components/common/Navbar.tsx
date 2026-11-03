@@ -286,6 +286,28 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCart }) => {
           </div>
         </div>
       </div>
+
+      {/* Mobile Horizontal Role Router Bar */}
+      <div className="md:hidden mt-2 pt-2 border-t border-white/5 flex items-center space-x-1 overflow-x-auto no-scrollbar pb-0.5">
+        {(Object.keys(roleLabels) as UserRole[]).map(roleKey => {
+          const role = roleLabels[roleKey];
+          const isActive = currentUser.role === roleKey;
+          return (
+            <button
+              key={roleKey}
+              onClick={() => switchRole(roleKey)}
+              className={`flex-shrink-0 flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                isActive
+                  ? `${role.color} border shadow-sm font-bold`
+                  : 'text-slate-400 hover:text-white bg-charcoal-900/60'
+              }`}
+            >
+              {role.icon}
+              <span>{role.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </header>
   );
 };

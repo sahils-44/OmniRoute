@@ -52,19 +52,33 @@ export const registerUser = async (
       await updateProfile(user, { displayName });
     }
 
-    // Persist user role profile in Firestore `users/{uid}`
+    // Persist user role profile in Firestore `users/{uid}` matching `isValidUser` schema
     try {
       const userDocRef = doc(db, "users", user.uid);
-      await setDoc(userDocRef, {
-        uid: user.uid,
-        email: user.email,
+      const businessId =
+        role === 'restaurant_owner'
+          ? 'biz-restaurant-1'
+          : role === 'vendor'
+          ? 'biz-vendor-1'
+          : undefined;
+
+      const profilePayload: Record<string, unknown> = {
+        id: user.uid,
+        email: user.email || email,
         name: displayName || user.email?.split('@')[0] || 'User',
         role,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      if (businessId) {
+        profilePayload.businessId = businessId;
+      }
+
+      await setDoc(userDocRef, profilePayload);
+      console.log(`[Firebase] User profile created in Firestore for ${user.uid} with role ${role}`);
     } catch (firestoreErr) {
-      console.warn("Could not write user profile to Firestore (check rules/network):", firestoreErr);
+      console.warn("[Firebase] Could not write user profile to Firestore (check rules/network):", firestoreErr);
     }
 
     return user;

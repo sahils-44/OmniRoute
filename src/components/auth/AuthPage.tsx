@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserRole } from '../../types';
-import { loginUser, registerUser } from '../../services/authService';
+import { useApp } from '../../context/AppContext';
 import {
   Compass,
   Mail,
@@ -24,6 +24,7 @@ interface AuthPageProps {
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({ onDemoLogin, onSuccess }) => {
+  const { loginUser, registerUser } = useApp();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

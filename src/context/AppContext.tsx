@@ -27,7 +27,8 @@ import {
 } from '../services/routingEngine';
 import { soundService } from '../services/soundService';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { doc, setDoc, updateDoc, collection, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import {
   loginUser as fbLoginUser,
   registerUser as fbRegisterUser,
@@ -461,6 +462,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clearCart();
       soundService.playIncomingOrderSound();
 
+      // Sync order to Firestore in background
+      try {
+        if (db) {
+          const orderRef = doc(db, 'orders', newOrder.id);
+          setDoc(orderRef, newOrder, { merge: true }).catch(e => {
+            console.warn('[Firestore] Order creation notice:', e.message);
+          });
+        }
+      } catch (e) {
+        console.warn('[Firestore] Order write error:', e);
+      }
+
       // Notify Business
       addNotification({
         targetRole: newOrder.businessType === 'restaurant' ? 'restaurant_owner' : 'vendor',
@@ -496,6 +509,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
         })
       );
+
+      // Sync status update to Firestore in background
+      try {
+        if (db) {
+          const orderRef = doc(db, 'orders', orderId);
+          updateDoc(orderRef, {
+            status: newStatus,
+          }).catch(e => {
+            console.warn('[Firestore] Order status notice:', e.message);
+          });
+        }
+      } catch (e) {
+        console.warn('[Firestore] Order status update error:', e);
+      }
 
       soundService.playStatusUpdateSound();
 
@@ -546,6 +573,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setDrivers(prev =>
         prev.map(d => (d.id === driverId ? { ...d, activeOrderId: orderId } : d))
       );
+
+      // Sync driver assignment to Firestore in background
+      try {
+        if (db) {
+          const orderRef = doc(db, 'orders', orderId);
+          updateDoc(orderRef, {
+            deliveryPartnerId: driver.id,
+            deliveryPartnerName: driver.name,
+            deliveryPartnerPhone: driver.phone,
+            status: 'assigned',
+          }).catch(e => {
+            console.warn('[Firestore] Driver assign notice:', e.message);
+          });
+        }
+      } catch (e) {
+        console.warn('[Firestore] Driver assign update error:', e);
+      }
 
       soundService.playIncomingOrderSound();
 
@@ -927,15 +971,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loginUser = useCallback(async (email: string, pass: string) => {
     const user = await fbLoginUser(email, pass);
+    let resolvedRole: UserRole = 'customer';
+    let resolvedName = user.displayName || user.email?.split('@')[0] || 'User';
+    let resolvedBusinessId: string | undefined = undefined;
+
+    try {
+      const profile = await getUserProfile(user.uid);
+      if (profile && profile.role) {
+        resolvedRole = profile.role;
+        resolvedName = profile.name || resolvedName;
+        resolvedBusinessId =
+          profile.businessId ||
+          (resolvedRole === 'restaurant_owner'
+            ? 'biz-restaurant-1'
+            : resolvedRole === 'vendor'
+            ? 'biz-vendor-1'
+            : undefined);
+      } else {
+        const em = email.toLowerCase();
+        if (em.includes('admin')) resolvedRole = 'admin';
+        else if (em.includes('hotel') || em.includes('restaurant') || em.includes('chef'))
+          resolvedRole = 'restaurant_owner';
+        else if (em.includes('vendor') || em.includes('chai') || em.includes('stall'))
+          resolvedRole = 'vendor';
+        else if (em.includes('driver') || em.includes('courier') || em.includes('rider'))
+          resolvedRole = 'delivery_partner';
+        resolvedBusinessId =
+          resolvedRole === 'restaurant_owner'
+            ? 'biz-restaurant-1'
+            : resolvedRole === 'vendor'
+            ? 'biz-vendor-1'
+            : undefined;
+      }
+    } catch (e) {
+      console.warn('[Firebase] Profile lookup error during sign in:', e);
+    }
+
+    const loggedUser: User = {
+      id: user.uid,
+      name: resolvedName,
+      email: user.email || email,
+      role: resolvedRole,
+      phone: '+91 98201 12345',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+      businessId: resolvedBusinessId,
+    };
+
+    setCurrentUser(loggedUser);
+    localStorage.setItem('omniroute_user', JSON.stringify(loggedUser));
+    setFirebaseUser(user);
+    setIsGuestDemo(false);
+    localStorage.removeItem('omniroute_is_guest');
     soundService.playSuccessDeliverySound();
     return user;
   }, []);
 
-  const registerUser = useCallback(async (email: string, pass: string, name?: string, role?: UserRole) => {
-    const user = await fbRegisterUser(email, pass, name, role);
-    soundService.playSuccessDeliverySound();
-    return user;
-  }, []);
+  const registerUser = useCallback(
+    async (email: string, pass: string, name?: string, role: UserRole = 'customer') => {
+      const user = await fbRegisterUser(email, pass, name, role);
+      const businessId =
+        role === 'restaurant_owner'
+          ? 'biz-restaurant-1'
+          : role === 'vendor'
+          ? 'biz-vendor-1'
+          : undefined;
+
+      const newUser: User = {
+        id: user.uid,
+        name: name || user.displayName || email.split('@')[0] || 'User',
+        email: user.email || email,
+        role: role,
+        phone: '+91 98201 12345',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+        businessId,
+      };
+
+      setCurrentUser(newUser);
+      localStorage.setItem('omniroute_user', JSON.stringify(newUser));
+      setFirebaseUser(user);
+      setIsGuestDemo(false);
+      localStorage.removeItem('omniroute_is_guest');
+      soundService.playSuccessDeliverySound();
+      return user;
+    },
+    []
+  );
 
   const logoutUser = useCallback(async () => {
     await fbLogoutUser();
